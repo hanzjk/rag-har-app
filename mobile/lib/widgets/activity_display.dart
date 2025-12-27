@@ -62,6 +62,10 @@ class _ActivityDisplayState extends State<ActivityDisplay>
         return Icons.event_seat;
       case ActivityType.standing:
         return Icons.accessibility_new;
+      case ActivityType.walkingUpstairs:
+        return Icons.stairs;
+      case ActivityType.walkingDownstairs:
+        return Icons.stairs;
       case ActivityType.unknown:
         return Icons.help_outline;
     }
@@ -77,6 +81,10 @@ class _ActivityDisplayState extends State<ActivityDisplay>
         return Colors.green;
       case ActivityType.standing:
         return Colors.orange;
+      case ActivityType.walkingUpstairs:
+        return Colors.purple;
+      case ActivityType.walkingDownstairs:
+        return Colors.teal;
       case ActivityType.unknown:
         return Colors.grey;
     }

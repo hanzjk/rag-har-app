@@ -103,7 +103,7 @@ flutter build ios
 
 ### State Management
 The app uses Provider pattern for state management with three main providers:
-- `AppStateProvider` - manages WebSocket URL, connection state, and demo mode
+- `AppStateProvider` - manages WebSocket URL and connection state
 - `SensorDataProvider` - handles sensor data collection and streaming with different message types
 - `ActivityProvider` - manages activity predictions and history
 
@@ -171,41 +171,16 @@ Default WebSocket URL: `ws://192.168.1.100:8080/ws`
 
 The URL can be changed in the Settings screen and is persisted using SharedPreferences.
 
-## Demo Mode
-
-The app includes a Demo Mode for testing without physical sensors, ideal for simulators/emulators.
-
-**Enabling Demo Mode:**
-1. Open Settings screen
-2. Toggle "Enable Demo Mode"
-3. The app will restart to use simulated sensors
-
-**Features:**
-- Generates realistic sensor data patterns at 50 Hz for all three sensors (accelerometer, gyroscope, magnetometer)
-- Activity selector in Data Collection screen to simulate different activities:
-  - Walking: 2 Hz gait cycle with moderate amplitude
-  - Running: 3 Hz gait cycle with higher amplitude
-  - Sitting: Minimal movement, mostly gravity
-  - Standing: Very minimal movement with micro-variations
-- Realistic noise and patterns based on actual human motion physics
-- Works on any emulator/simulator without needing physical sensors
-
-**Use Cases:**
-- Testing UI/UX flow
-- Testing WebSocket server integration
-- Demonstrating the app
-- Development without physical Android device
-
 ## Supported Activities
 
 - Walking
 - Running
 - Sitting
 - Standing
+- Walking Upstairs
+- Walking Downstairs
 
 ## Full System Testing
-
-### Quick Test (Demo Mode)
 
 1. **Start the server:**
    ```bash
@@ -228,24 +203,25 @@ The app includes a Demo Mode for testing without physical sensors, ideal for sim
    ipconfig
    ```
 
-4. **Configure the app:**
+4. **Deploy app to physical Android device** (USB or wireless debugging)
+
+5. **Configure the app:**
+   - Ensure device is on same network as server
    - Settings → Set WebSocket URL to `ws://YOUR_IP:8080/ws`
-   - Settings → Enable Demo Mode
-   - Restart the app
 
-5. **Test:**
-   - Go to Activity Recognition mode
-   - Select activity pattern (e.g., Walking)
+6. **Test Data Collection:**
+   - Go to Data Collection screen
+   - Select an activity label (e.g., Walking)
    - Tap Start
+   - Perform the activity for 10-20 seconds
+   - Tap Stop
+   - Data is sent to server and saved
+
+7. **Test Activity Recognition:**
+   - Go to Activity Recognition screen
+   - Tap Start
+   - Perform an activity
    - Watch real-time predictions from the server
-
-### Real Sensor Testing
-
-1. Deploy app to physical Android device (USB or wireless debugging)
-2. Ensure device is on same network as server
-3. Configure WebSocket URL with server's local IP
-4. Disable Demo Mode in settings
-5. Perform actual activities and observe predictions
 
 ## Server Implementation Notes
 

@@ -87,25 +87,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 24),
             const Divider(),
             const SizedBox(height: 16),
-            Text('Demo Mode', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Consumer<AppStateProvider>(
-              builder: (context, appState, _) {
-                return SwitchListTile(
-                  title: const Text('Enable Demo Mode'),
-                  subtitle: const Text(
-                    'Use simulated sensor data for testing without physical sensors',
-                  ),
-                  value: appState.isDemoMode,
-                  onChanged: (value) {
-                    appState.setDemoMode(value);
-                  },
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-            const Divider(),
-            const SizedBox(height: 16),
             Text('About', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             const Text(

@@ -84,7 +84,7 @@ class RAGActivityClassifier:
         # Hardcoded configuration for har_demo dataset
         self.dataset_name = "har_demo"
         self.collection_name = "har_demo_collection"
-        self.valid_labels = ["walking", "running", "sitting", "standing"]
+        self.valid_labels = ["walking", "running", "sitting", "standing", "walking_upstairs", "walking_downstairs"]
         self.statistics = ["mean", "std", "min", "max", "median", "p25", "p75"]
         self.sensor_columns = ["accel", "gyro", "mag"]
 
@@ -359,7 +359,7 @@ class RAGActivityClassifier:
 
 INSTRUCTIONS:
 1. Classify the CANDIDATE into exactly ONE class from CLASSES
-2. Use the retrieved samples as REFERENCE PATTERNS.
+2. Use the retrieved samples as REFERENCE PATTERNS of similar classes.
 
 CLASSES = {classes_str}
 

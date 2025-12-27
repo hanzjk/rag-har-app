@@ -4,11 +4,8 @@ import '../providers/app_state_provider.dart';
 import '../providers/sensor_data_provider.dart';
 import '../services/permission_service.dart';
 import '../services/websocket_service.dart';
-import '../services/demo_sensor_service.dart';
 import '../widgets/connection_status.dart';
 import '../widgets/sensor_data_display.dart';
-import '../widgets/demo_activity_selector.dart';
-import '../models/activity_type.dart';
 
 class DataCollectionScreen extends StatefulWidget {
   const DataCollectionScreen({super.key});
@@ -21,7 +18,6 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   final PermissionService _permissionService = PermissionService();
   WebSocketService? _websocketService;
   bool _isInitialized = false;
-  ActivityType _selectedDemoActivity = ActivityType.walking;
   String _selectedActivityLabel = 'walking';
 
   @override
@@ -45,20 +41,18 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     final appState = context.read<AppStateProvider>();
 
     if (!sensorDataProvider.isCollecting) {
-      // Only check permissions if not in demo mode
-      if (!appState.isDemoMode) {
-        final hasPermission = await _permissionService.requestSensorPermissions();
-        if (!hasPermission) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Sensor permissions are required'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return;
+      // Check sensor permissions
+      final hasPermission = await _permissionService.requestSensorPermissions();
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Sensor permissions are required'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
+        return;
       }
 
       try {
@@ -160,6 +154,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                                   DropdownMenuItem(value: 'running', child: Text('Running')),
                                   DropdownMenuItem(value: 'sitting', child: Text('Sitting')),
                                   DropdownMenuItem(value: 'standing', child: Text('Standing')),
+                                  DropdownMenuItem(value: 'walking_upstairs', child: Text('Walking Upstairs')),
+                                  DropdownMenuItem(value: 'walking_downstairs', child: Text('Walking Downstairs')),
                                 ],
                                 onChanged: sensorData.isCollecting ? null : (value) {
                                   if (value != null) {
@@ -174,34 +170,6 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Consumer<AppStateProvider>(
-                        builder: (context, appState2, _) {
-                          if (appState2.isDemoMode) {
-                            return DemoActivitySelector(
-                              selectedActivity: _selectedDemoActivity,
-                              onActivityChanged: (activity) {
-                                setState(() {
-                                  _selectedDemoActivity = activity;
-                                });
-                                final sensorDataProvider = context.read<SensorDataProvider>();
-                                final service = sensorDataProvider.sensorService;
-                                if (service is DemoSensorService) {
-                                  service.setActivity(activity);
-                                }
-                              },
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        },
-                      ),
-                      Consumer<AppStateProvider>(
-                        builder: (context, appState3, _) {
-                          if (appState3.isDemoMode) {
-                            return const SizedBox(height: 16);
-                          }
-                          return const SizedBox.shrink();
-                        },
-                      ),
                       if (sensorData.isCollecting) ...[
                         Card(
                           color: Colors.blue[50],

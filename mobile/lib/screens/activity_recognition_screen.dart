@@ -6,11 +6,9 @@ import '../providers/sensor_data_provider.dart';
 import '../providers/activity_provider.dart';
 import '../services/permission_service.dart';
 import '../services/websocket_service.dart';
-import '../services/demo_sensor_service.dart';
 import '../models/activity_type.dart';
 import '../widgets/connection_status.dart';
 import '../widgets/activity_display.dart';
-import '../widgets/demo_activity_selector.dart';
 
 class ActivityRecognitionScreen extends StatefulWidget {
   const ActivityRecognitionScreen({super.key});
@@ -24,7 +22,6 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
   final PermissionService _permissionService = PermissionService();
   WebSocketService? _websocketService;
   bool _isInitialized = false;
-  ActivityType _selectedDemoActivity = ActivityType.walking;
 
   @override
   void didChangeDependencies() {
@@ -48,20 +45,18 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
     final appState = context.read<AppStateProvider>();
 
     if (!sensorDataProvider.isCollecting) {
-      // Only check permissions if not in demo mode
-      if (!appState.isDemoMode) {
-        final hasPermission = await _permissionService.requestSensorPermissions();
-        if (!hasPermission) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Sensor permissions are required'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return;
+      // Check sensor permissions
+      final hasPermission = await _permissionService.requestSensorPermissions();
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Sensor permissions are required'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
+        return;
       }
 
       try {
@@ -106,30 +101,6 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  Consumer2<AppStateProvider, SensorDataProvider>(
-                    builder: (context, appState, sensorDataProvider, _) {
-                      if (appState.isDemoMode) {
-                        return Column(
-                          children: [
-                            DemoActivitySelector(
-                              selectedActivity: _selectedDemoActivity,
-                              onActivityChanged: (activity) {
-                                setState(() {
-                                  _selectedDemoActivity = activity;
-                                });
-                                final service = sensorDataProvider.sensorService;
-                                if (service is DemoSensorService) {
-                                  service.setActivity(activity);
-                                }
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
                   Consumer2<ActivityProvider, SensorDataProvider>(
                     builder: (context, activityProvider, sensorDataProvider, _) {
                       // Show buffering state when collecting but no predictions yet
@@ -253,6 +224,10 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
         return Icons.event_seat;
       case ActivityType.standing:
         return Icons.accessibility_new;
+      case ActivityType.walkingUpstairs:
+        return Icons.stairs;
+      case ActivityType.walkingDownstairs:
+        return Icons.stairs;
       case ActivityType.unknown:
         return Icons.help_outline;
     }
@@ -268,6 +243,10 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
         return Colors.green;
       case ActivityType.standing:
         return Colors.orange;
+      case ActivityType.walkingUpstairs:
+        return Colors.purple;
+      case ActivityType.walkingDownstairs:
+        return Colors.teal;
       case ActivityType.unknown:
         return Colors.grey;
     }
