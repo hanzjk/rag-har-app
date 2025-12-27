@@ -46,13 +46,14 @@ har-demo/
 │   │   ├── sitting.csv
 │   │   └── standing.csv
 │   ├── venv/                      # Python virtual environment (gitignored)
-│   ├── README.md                  # Server documentation
-│   │
-│   └── rag_pipeline/              # RAG-HAR pipeline
-│       ├── preprocessing.py       # Data cleaning and window segmentation
-│       ├── generate_stats.py      # Statistical feature extraction per window
-│       ├── timeseries_indexing.py # Vector DB creation and indexing
-│       ├── windows/               # Preprocessed windowed data (output)
+│   └── README.md                  # Server documentation
+│
+├── rag-har-pipeline/                  # RAG-HAR pipeline (future enhancement)
+│   ├── preprocessing.py           # Data cleaning and window segmentation
+│   ├── generate_stats.py          # Statistical feature extraction per window
+│   ├── timeseries_indexing.py     # Vector DB creation and indexing
+│   ├── requirements.txt           # RAG pipeline dependencies
+│   └── windows/                 # Preprocessed windowed data (output)
 │
 ├── CLAUDE.md                      # Development guide for Claude Code
 └── README.md                      # This file
@@ -134,6 +135,37 @@ python websocket_server.py
 Server starts on `ws://0.0.0.0:8080`
 
 For detailed server documentation, see [server/README.md](server/README.md).
+
+## 🤖 RAG-HAR Pipeline
+
+**Pipeline Components:**
+
+1. **preprocessing.py**: Data cleaning and window segmentation
+   - Load collected CSV files (walking.csv, running.csv, etc.)
+   - Clean and normalize sensor data
+   - Segment into fixed windows (e.g., 200 samples = 4 seconds)
+   - Output: Windowed time-series data
+
+2. **generate_stats.py**: Statistical feature extraction per window
+   - Calculate statistics for each window:
+     - For accelerometer, magnetometer and gyroscope 
+     - Per-axis statistics (accel_x, accel_y, accel_z, etc.)
+   - Output: Feature vectors for each window
+
+3. **timeseries_indexing.py**: Vector database creation
+   - Generate embeddings from statistical features
+   - Index windows into vector database
+   - Store with metadata: activity label, timestamp, confidence
+   - Create retrieval index for similarity search
+
+
+**Advantages:**
+- No traditional model training required
+- Interpretable predictions (show similar past examples)
+- Easy to add new activities (just index more data)
+- Handles edge cases through retrieval
+- Continuously improvable (add more indexed examples)
+
 
 ## 🚀 Full System Setup
 
@@ -261,38 +293,6 @@ Mobile App (Display Activity & History)
 2. Run `flutter run`
 3. Phone must be on same network as server
 4. Use server's local IP address in app settings
-
-
-## 🤖 RAG-HAR Pipeline
-
-**Pipeline Components:**
-
-1. **preprocessing.py**: Data cleaning and window segmentation
-   - Load collected CSV files (walking.csv, running.csv, etc.)
-   - Clean and normalize sensor data
-   - Segment into fixed windows (e.g., 200 samples = 4 seconds)
-   - Output: Windowed time-series data
-
-2. **generate_stats.py**: Statistical feature extraction per window
-   - Calculate statistics for each window:
-     - For accelerometer, magnetometer and gyroscope 
-     - Per-axis statistics (accel_x, accel_y, accel_z, etc.)
-   - Output: Feature vectors for each window
-
-3. **timeseries_indexing.py**: Vector database creation
-   - Generate embeddings from statistical features
-   - Index windows into vector database
-   - Store with metadata: activity label, timestamp, confidence
-   - Create retrieval index for similarity search
-
-
-**Advantages:**
-- No traditional model training required
-- Interpretable predictions (show similar past examples)
-- Easy to add new activities (just index more data)
-- Handles edge cases through retrieval
-- Continuously improvable (add more indexed examples)
-
 
 
 ## 🛠️ Technology Stack
