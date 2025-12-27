@@ -36,7 +36,7 @@ python websocket_server.py --mode collect
 ```
 
 **On mobile app:**
-1. Settings → Set WebSocket URL: `ws://YOUR_IP:8080/ws`
+1. Settings → Set WebSocket URL: `ws://YOUR_IP:8000/ws`
 2. Settings → Enable Demo Mode (for testing)
 3. Data Collection screen
 4. Select activity label: "walking"
@@ -60,7 +60,7 @@ python websocket_server.py --mode predict
 ```
 
 **On mobile app:**
-1. Settings → Set WebSocket URL: `ws://YOUR_IP:8080/ws`
+1. Settings → Set WebSocket URL: `ws://YOUR_IP:8000/ws`
 2. Settings → Enable Demo Mode (for testing)
 3. Activity Recognition screen
 4. Tap Start → Perform activities → See predictions in real-time!
@@ -269,10 +269,10 @@ Ctrl+C
 tail -f server_output.log
 
 # Check if server is running
-lsof -i :8080
+lsof -i :8000
 
 # Test WebSocket connection
-wscat -c ws://localhost:8080/ws
+wscat -c ws://localhost:8000/ws
 ```
 
 ## 📈 Performance
@@ -299,7 +299,7 @@ python --version  # Should be 3.8+
 pip install -r requirements.txt
 
 # Check port availability
-lsof -i :8080  # Should be empty
+lsof -i :8000  # Should be empty
 ```
 
 ### Mobile app can't connect

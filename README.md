@@ -257,7 +257,9 @@ Mobile App (Display Activity & History)
 2. Run `flutter run`
 3. Phone must be on same network as server
 4. Use server's local IP address in app settings
-
+```
+echo "Your WebSocket URL is: ws://$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1):8000/ws"
+```
 
 ## 🛠️ Technology Stack
 

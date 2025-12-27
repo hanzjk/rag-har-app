@@ -94,7 +94,7 @@ python websocket_server.py
 - Performs activity classification (currently rule-based)
 - Sends predictions back to the app in real-time
 
-The server will start on `ws://0.0.0.0:8080` and listen for connections.
+The server will start on `ws://0.0.0.0:8000` and listen for connections.
 
 ## Testing with the Flutter App
 
@@ -105,8 +105,8 @@ The server will start on `ws://0.0.0.0:8080` and listen for connections.
 
 2. **Update Flutter app settings:**
    - Open the app → Settings
-   - Set WebSocket URL to: `ws://YOUR_LOCAL_IP:8080/ws`
-   - Example: `ws://192.168.1.100:8080/ws`
+   - Set WebSocket URL to: `ws://YOUR_LOCAL_IP:8000/ws`
+   - Example: `ws://192.168.1.100:8000/ws`
 
 3. **Test the connection:**
    - Enable Demo Mode in app settings for easier testing

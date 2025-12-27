@@ -47,7 +47,7 @@ Future<void> _toggleCollection() async {
   if (!sensorDataProvider.isCollecting) {
     // 1. Connect to WebSocket server
     await _websocketService.connect(appState.websocketUrl);
-    //    ↑ Opens persistent connection to ws://192.168.1.100:8080/ws
+    //    ↑ Opens persistent connection to ws://192.168.1.100:8000/ws
 
     // 2. Set the activity label
     sensorDataProvider.setActivityLabel(_selectedActivityLabel);

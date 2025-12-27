@@ -38,9 +38,13 @@ global_classifier = None
 
 async def handle_client(websocket):
     """Handle a client connection"""
-    client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
-    connected_clients.add(websocket)
-    logger.info(f"Client connected: {client_id} (Total: {len(connected_clients)})")
+    try:
+        client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
+        connected_clients.add(websocket)
+        logger.info(f"🟢 Client connected: {client_id} (Total: {len(connected_clients)})")
+    except Exception as e:
+        logger.error(f"❌ Error in handle_client setup: {e}")
+        return
 
     sample_count = 0
 
@@ -132,12 +136,19 @@ async def handle_client(websocket):
 async def main():
     """Start the WebSocket server"""
     host = "0.0.0.0"  # Listen on all interfaces
-    port = 8080
+    port = 8000  # Changed from 8000 to avoid firewall issues
 
     logger.info("=" * 60)
     logger.info(f"Starting WebSocket server on ws://{host}:{port}")
     logger.info(f"Data will be saved to: {data_dir}")
     logger.info("Ready to handle both data collection and activity prediction")
+
+    # Show accessible URLs
+    import socket
+    hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(hostname)
+    logger.info(f"📱 Connect from mobile app using: ws://{local_ip}:{port}/ws")
+
     logger.info("=" * 60)
     logger.info("Waiting for connections...")
 

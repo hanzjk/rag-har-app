@@ -11,7 +11,7 @@ $ cd server
 $ python websocket_server.py --mode collect --data-dir my_dataset
 
 ============================================================
-Starting WebSocket server on ws://0.0.0.0:8080
+Starting WebSocket server on ws://0.0.0.0:8000
 Server mode: collect
 Data will be saved to: my_dataset
 Ready to collect labeled sensor data from mobile app
@@ -24,7 +24,7 @@ Waiting for connections...
 **Mobile App:**
 1. User selects activity label: "walking"
 2. User taps "Start"
-3. App creates WebSocket connection to `ws://192.168.1.100:8080/ws`
+3. App creates WebSocket connection to `ws://192.168.1.100:8000/ws`
 
 **Server Console:**
 ```

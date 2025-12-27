@@ -177,7 +177,7 @@ elif SERVER_MODE == "predict":
 ```bash
 $ python websocket_server.py --mode collect
 ============================================================
-Starting WebSocket server on ws://0.0.0.0:8080
+Starting WebSocket server on ws://0.0.0.0:8000
 Server mode: collect
 Data will be saved to: collected_data
 Ready to collect labeled sensor data from mobile app
@@ -201,7 +201,7 @@ Waiting for connections...
 ```bash
 $ python websocket_server.py --mode predict
 ============================================================
-Starting WebSocket server on ws://0.0.0.0:8080
+Starting WebSocket server on ws://0.0.0.0:8000
 Server mode: predict
 Ready to send activity predictions to mobile app
 ============================================================
@@ -400,7 +400,7 @@ python websocket_server.py --mode predict --model my_model.pkl
 
 **Both modes:**
 - Use same WebSocket connection
-- Run on same port (8080)
+- Run on same port (8000)
 - Stream at same rate (20 Hz)
 - Compatible with same mobile app (different screens)
 - Can be switched by restarting server

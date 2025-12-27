@@ -29,9 +29,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _saveSettings() {
     final appState = context.read<AppStateProvider>();
     appState.setWebSocketUrl(_urlController.text);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Settings saved')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Settings saved')));
   }
 
   void _resetToDefault() {
@@ -61,7 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               controller: _urlController,
               decoration: const InputDecoration(
                 labelText: 'WebSocket URL',
-                hintText: 'ws://192.168.1.100:8080/ws',
+                hintText: 'ws://192.168.1.100:8000/ws',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.link),
               ),
@@ -87,10 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 24),
             const Divider(),
             const SizedBox(height: 16),
-            Text(
-              'Demo Mode',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('Demo Mode', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Consumer<AppStateProvider>(
               builder: (context, appState, _) {
@@ -109,10 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 24),
             const Divider(),
             const SizedBox(height: 16),
-            Text(
-              'About',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('About', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             const Text(
               'Human Activity Recognition App\n'
