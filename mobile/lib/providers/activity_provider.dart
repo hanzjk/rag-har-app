@@ -8,12 +8,10 @@ class ActivityProvider extends ChangeNotifier {
   final WebSocketService _websocketService;
 
   ActivityType _currentActivity = ActivityType.unknown;
-  double _confidence = 0.0;
   final List<ActivityPrediction> _activityHistory = [];
   StreamSubscription<ActivityPrediction>? _subscription;
 
   ActivityType get currentActivity => _currentActivity;
-  double get confidence => _confidence;
   List<ActivityPrediction> get activityHistory => List.unmodifiable(_activityHistory);
   WebSocketService get websocketService => _websocketService;
 
@@ -23,7 +21,6 @@ class ActivityProvider extends ChangeNotifier {
   void startListening() {
     _subscription = _websocketService.activityStream.listen((prediction) {
       _currentActivity = prediction.activity;
-      _confidence = prediction.confidence;
 
       _activityHistory.insert(0, prediction);
 
@@ -39,7 +36,6 @@ class ActivityProvider extends ChangeNotifier {
     _subscription?.cancel();
     _subscription = null;
     _currentActivity = ActivityType.unknown;
-    _confidence = 0.0;
     notifyListeners();
   }
 

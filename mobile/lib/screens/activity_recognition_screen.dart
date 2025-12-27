@@ -6,8 +6,11 @@ import '../providers/sensor_data_provider.dart';
 import '../providers/activity_provider.dart';
 import '../services/permission_service.dart';
 import '../services/websocket_service.dart';
+import '../services/demo_sensor_service.dart';
+import '../models/activity_type.dart';
 import '../widgets/connection_status.dart';
 import '../widgets/activity_display.dart';
+import '../widgets/demo_activity_selector.dart';
 
 class ActivityRecognitionScreen extends StatefulWidget {
   const ActivityRecognitionScreen({super.key});
@@ -21,6 +24,7 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
   final PermissionService _permissionService = PermissionService();
   WebSocketService? _websocketService;
   bool _isInitialized = false;
+  ActivityType _selectedDemoActivity = ActivityType.walking;
 
   @override
   void didChangeDependencies() {
@@ -102,16 +106,45 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
+                  Consumer2<AppStateProvider, SensorDataProvider>(
+                    builder: (context, appState, sensorDataProvider, _) {
+                      if (appState.isDemoMode) {
+                        return Column(
+                          children: [
+                            DemoActivitySelector(
+                              selectedActivity: _selectedDemoActivity,
+                              onActivityChanged: (activity) {
+                                setState(() {
+                                  _selectedDemoActivity = activity;
+                                });
+                                final service = sensorDataProvider.sensorService;
+                                if (service is DemoSensorService) {
+                                  service.setActivity(activity);
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
                   Consumer2<ActivityProvider, SensorDataProvider>(
                     builder: (context, activityProvider, sensorDataProvider, _) {
                       // Show buffering state when collecting but no predictions yet
                       final isBuffering = sensorDataProvider.isCollecting &&
                                          activityProvider.activityHistory.isEmpty;
 
+                      // Get last updated time from most recent prediction
+                      final lastUpdated = activityProvider.activityHistory.isNotEmpty
+                          ? activityProvider.activityHistory.first.timestamp
+                          : null;
+
                       return ActivityDisplay(
                         activity: activityProvider.currentActivity,
-                        confidence: activityProvider.confidence,
                         isBuffering: isBuffering,
+                        lastUpdated: lastUpdated,
                       );
                     },
                   ),
@@ -171,17 +204,11 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
                                     dense: true,
                                     leading: Icon(
                                       _getActivityIcon(prediction.activity),
-                                      color: Theme.of(context).colorScheme.primary,
+                                      color: _getActivityColor(prediction.activity),
                                     ),
                                     title: Text(prediction.activity.displayName),
                                     subtitle: Text(
                                       DateFormat('HH:mm:ss').format(prediction.timestamp),
-                                    ),
-                                    trailing: Text(
-                                      '${(prediction.confidence * 100).toStringAsFixed(0)}%',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
                                     ),
                                   );
                                 },
@@ -216,18 +243,33 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
     );
   }
 
-  IconData _getActivityIcon(dynamic activityType) {
+  IconData _getActivityIcon(ActivityType activityType) {
     switch (activityType) {
-      case 'walking':
+      case ActivityType.walking:
         return Icons.directions_walk;
-      case 'running':
+      case ActivityType.running:
         return Icons.directions_run;
-      case 'sitting':
+      case ActivityType.sitting:
         return Icons.event_seat;
-      case 'standing':
+      case ActivityType.standing:
         return Icons.accessibility_new;
-      default:
+      case ActivityType.unknown:
         return Icons.help_outline;
+    }
+  }
+
+  Color _getActivityColor(ActivityType activityType) {
+    switch (activityType) {
+      case ActivityType.walking:
+        return Colors.blue;
+      case ActivityType.running:
+        return Colors.red;
+      case ActivityType.sitting:
+        return Colors.green;
+      case ActivityType.standing:
+        return Colors.orange;
+      case ActivityType.unknown:
+        return Colors.grey;
     }
   }
 

@@ -13,12 +13,10 @@ enum ConnectionState {
 
 class ActivityPrediction {
   final ActivityType activity;
-  final double confidence;
   final DateTime timestamp;
 
   ActivityPrediction({
     required this.activity,
-    required this.confidence,
     required this.timestamp,
   });
 }
@@ -96,7 +94,6 @@ class WebSocketService {
       final data = jsonDecode(message.toString());
 
       String? activity;
-      double? confidence;
 
       if (data['type'] == 'activity_prediction') {
         // Skip buffering/initializing predictions
@@ -109,17 +106,14 @@ class WebSocketService {
         }
 
         activity = activityName;
-        confidence = (data['confidence'] as num?)?.toDouble();
       } else if (data.containsKey('prediction')) {
         activity = data['prediction'];
-        confidence = (data['probability'] as num?)?.toDouble();
       }
 
       if (activity != null) {
         _activityController.add(
           ActivityPrediction(
             activity: ActivityType.fromString(activity),
-            confidence: confidence ?? 0.0,
             timestamp: DateTime.now(),
           ),
         );

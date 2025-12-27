@@ -1,14 +1,14 @@
 """
 Activity Predictor Module
 Handles activity prediction/classification based on sensor data.
-Uses sliding window approach for temporal pattern recognition.
+Uses sliding window approach with RAG-based classifier.
 """
 
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from collections import deque
-import statistics
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -16,20 +16,26 @@ logger = logging.getLogger(__name__)
 class ActivityPredictor:
     """
     Activity prediction engine.
-    Uses sliding window approach to analyze temporal patterns.
-    Currently uses rule-based classification on windowed features.
-    Can be extended to use ML models.
+    Uses sliding window approach with RAG-based classifier for activity recognition.
     """
 
-    def __init__(self, window_size: int = 200, min_samples: int = 100, step_size: int = 50):
+    def __init__(
+        self,
+        classifier=None,
+        window_size: int = 200,
+        min_samples: int = 100,
+        step_size: int = 50,
+    ):
         """
         Initialize the activity predictor with sliding window.
 
         Args:
+            classifier: RAGActivityClassifier instance (optional, for real predictions)
             window_size: Number of samples in the sliding window (default: 200 = 4 seconds at 50Hz)
             min_samples: Minimum samples needed before making predictions (default: 100 = 2 seconds)
             step_size: Number of samples between predictions (default: 50 = 1 second, 75% overlap)
         """
+        self.classifier = classifier
         self.window_size = window_size
         self.min_samples = min_samples
         self.step_size = step_size
@@ -40,8 +46,9 @@ class ActivityPredictor:
         self.samples_received = 0
         self.samples_since_last_prediction = 0
 
+        mode = "RAG-based" if classifier else "mock"
         logger.info(
-            f"Activity predictor initialized with sliding window "
+            f"Activity predictor initialized with {mode} classification "
             f"(window_size={window_size}, min_samples={min_samples}, step_size={step_size})"
         )
 
@@ -60,10 +67,18 @@ class ActivityPredictor:
 
         # Only make prediction every step_size samples
         if self.samples_since_last_prediction >= self.step_size:
+            logger.info(
+                f"Step boundary reached ({self.step_size} samples). "
+                f"Window: {len(self.window)}/{self.window_size} samples. Making prediction..."
+            )
             self.samples_since_last_prediction = 0  # Reset counter
             return self._predict_from_window()
         else:
             self.samples_since_last_prediction += 1
+            logger.debug(
+                f"Buffering sample {self.samples_since_last_prediction}/{self.step_size}. "
+                f"Window: {len(self.window)}/{self.window_size}"
+            )
             return None  # No prediction this sample
 
     def _add_to_window(self, sensor_data: dict):
@@ -74,189 +89,115 @@ class ActivityPredictor:
             sensor_data: Dictionary containing sensor readings
         """
         try:
-            accel = sensor_data['data']['accelerometer']
-            gyro = sensor_data['data']['gyroscope']
-            mag = sensor_data['data']['magnetometer']
+            accel = sensor_data["data"]["accelerometer"]
+            gyro = sensor_data["data"]["gyroscope"]
+            mag = sensor_data["data"]["magnetometer"]
 
             # Store flattened sensor reading
             sample = {
-                'timestamp': sensor_data.get('timestamp'),
-                'accel_x': accel['x'],
-                'accel_y': accel['y'],
-                'accel_z': accel['z'],
-                'gyro_x': gyro['x'],
-                'gyro_y': gyro['y'],
-                'gyro_z': gyro['z'],
-                'mag_x': mag['x'],
-                'mag_y': mag['y'],
-                'mag_z': mag['z'],
+                "timestamp": sensor_data.get("timestamp"),
+                "accel_x": accel["x"],
+                "accel_y": accel["y"],
+                "accel_z": accel["z"],
+                "gyro_x": gyro["x"],
+                "gyro_y": gyro["y"],
+                "gyro_z": gyro["z"],
+                "mag_x": mag["x"],
+                "mag_y": mag["y"],
+                "mag_z": mag["z"],
             }
 
             self.window.append(sample)
             self.samples_received += 1
 
             if self.samples_received == self.min_samples:
-                logger.info(f"Window filled with {self.min_samples} samples, predictions now active")
+                logger.info(
+                    f"Window filled with {self.min_samples} samples, predictions now active"
+                )
 
         except Exception as e:
             logger.error(f"Error adding sample to window: {e}")
 
     def _predict_from_window(self) -> Dict[str, Any]:
         """
-        Make prediction based on current sliding window.
+        Make prediction based on current sliding window using RAG classifier.
 
         Returns:
             dict: Prediction with activity, confidence, and timestamp
         """
         # Need minimum samples before making predictions
         if len(self.window) < self.min_samples:
+            logger.warning(
+                f"Insufficient samples for prediction: {len(self.window)}/{self.min_samples}. "
+                f"Status: buffering"
+            )
             return {
                 "type": "activity_prediction",
                 "activity": "initializing",
-                "confidence": 0.0,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "window_size": len(self.window),
-                "status": "buffering"
+                "status": "buffering",
             }
 
-        # Extract features from window
-        features = self._extract_features()
+        # Use RAG classifier if available
+        if self.classifier:
+            logger.info("Using RAG-based classifier for prediction")
+            return self._predict_with_rag_classifier()
+        else:
+            # Fallback for testing without classifier
+            logger.error("no RAG classifier available")
+            return self._predict_mock()
 
-        # Make prediction using rule-based or ML model
-        return self._predict_rule_based_windowed(features)
-
-    def _extract_features(self) -> Dict[str, float]:
+    def _predict_with_rag_classifier(self) -> Dict[str, Any]:
         """
-        Extract statistical features from the sliding window.
-
-        Returns:
-            dict: Extracted features (mean, std, min, max, magnitude stats)
-        """
-        # Convert window to lists for each sensor axis
-        accel_x = [s['accel_x'] for s in self.window]
-        accel_y = [s['accel_y'] for s in self.window]
-        accel_z = [s['accel_z'] for s in self.window]
-
-        gyro_x = [s['gyro_x'] for s in self.window]
-        gyro_y = [s['gyro_y'] for s in self.window]
-        gyro_z = [s['gyro_z'] for s in self.window]
-
-        # Calculate magnitudes for each sample
-        accel_magnitudes = [
-            (s['accel_x']**2 + s['accel_y']**2 + s['accel_z']**2)**0.5
-            for s in self.window
-        ]
-
-        gyro_magnitudes = [
-            (s['gyro_x']**2 + s['gyro_y']**2 + s['gyro_z']**2)**0.5
-            for s in self.window
-        ]
-
-        # Extract statistical features
-        features = {
-            # Accelerometer magnitude features
-            'accel_mag_mean': statistics.mean(accel_magnitudes),
-            'accel_mag_std': statistics.stdev(accel_magnitudes) if len(accel_magnitudes) > 1 else 0,
-            'accel_mag_min': min(accel_magnitudes),
-            'accel_mag_max': max(accel_magnitudes),
-
-            # Gyroscope magnitude features
-            'gyro_mag_mean': statistics.mean(gyro_magnitudes),
-            'gyro_mag_std': statistics.stdev(gyro_magnitudes) if len(gyro_magnitudes) > 1 else 0,
-            'gyro_mag_min': min(gyro_magnitudes),
-            'gyro_mag_max': max(gyro_magnitudes),
-
-            # Accelerometer axis features
-            'accel_x_mean': statistics.mean(accel_x),
-            'accel_y_mean': statistics.mean(accel_y),
-            'accel_z_mean': statistics.mean(accel_z),
-            'accel_x_std': statistics.stdev(accel_x) if len(accel_x) > 1 else 0,
-            'accel_y_std': statistics.stdev(accel_y) if len(accel_y) > 1 else 0,
-            'accel_z_std': statistics.stdev(accel_z) if len(accel_z) > 1 else 0,
-
-            # Gyroscope axis features
-            'gyro_x_mean': statistics.mean(gyro_x),
-            'gyro_y_mean': statistics.mean(gyro_y),
-            'gyro_z_mean': statistics.mean(gyro_z),
-            'gyro_x_std': statistics.stdev(gyro_x) if len(gyro_x) > 1 else 0,
-            'gyro_y_std': statistics.stdev(gyro_y) if len(gyro_y) > 1 else 0,
-            'gyro_z_std': statistics.stdev(gyro_z) if len(gyro_z) > 1 else 0,
-        }
-
-        return features
-
-    def _predict_rule_based_windowed(self, features: Dict[str, float]) -> Dict[str, Any]:
-        """
-        Rule-based activity prediction using windowed features.
-        Uses temporal patterns (mean and std) for better accuracy.
-
-        Args:
-            features: Extracted features from sliding window
+        Predict activity using RAG-based classifier.
 
         Returns:
             dict: Prediction with activity, confidence, and timestamp
         """
         try:
-            # Extract key features
-            accel_mean = features['accel_mag_mean']
-            accel_std = features['accel_mag_std']
-            gyro_mean = features['gyro_mag_mean']
-            gyro_std = features['gyro_mag_std']
+            # Convert window deque to list of dicts for classifier
+            window_data = list(self.window)
+            logger.info(f"Invoking RAG classifier with {len(window_data)} samples")
 
-            # Enhanced rule-based classification using temporal patterns
-            # High std indicates periodic movement (walking/running)
-            # Low std indicates static position (sitting/standing)
+            # Call classifier's predict_from_window method
+            result = self.classifier.predict_from_window(window_data)
 
-            # RUNNING: High acceleration, high variation, high rotation
-            if accel_mean > 14 and accel_std > 2.0 and gyro_mean > 0.3:
-                activity = "running"
-                confidence = 0.90
-
-            # WALKING: Moderate acceleration, moderate variation, moderate rotation
-            elif accel_mean > 10.5 and accel_std > 0.8 and gyro_mean > 0.15:
-                activity = "walking"
-                confidence = 0.85
-
-            # SITTING: Low acceleration (just gravity), very low variation, minimal rotation
-            elif accel_mean < 10.5 and accel_std < 0.3 and gyro_mean < 0.05:
-                activity = "sitting"
-                confidence = 0.92
-
-            # STANDING: Low-moderate acceleration, low variation, low rotation
-            elif accel_mean < 11 and accel_std < 0.5 and gyro_mean < 0.1:
-                activity = "standing"
-                confidence = 0.80
-
-            # Borderline cases - use additional features
-            elif accel_std > 1.0:  # High variation suggests movement
-                activity = "walking"
-                confidence = 0.65
-            else:  # Low variation suggests stationary
-                activity = "standing"
-                confidence = 0.60
+            logger.info(f"RAG prediction complete: {result['activity']}")
 
             return {
                 "type": "activity_prediction",
-                "activity": activity,
-                "confidence": confidence,
+                "activity": result["activity"],
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "window_size": len(self.window),
-                "features": {
-                    "accel_mean": round(accel_mean, 2),
-                    "accel_std": round(accel_std, 2),
-                    "gyro_mean": round(gyro_mean, 3),
-                    "gyro_std": round(gyro_std, 3)
-                }
+                "method": "rag_classifier",
             }
 
         except Exception as e:
-            logger.error(f"Error predicting activity from window: {e}")
+            logger.error(f"Error predicting with RAG classifier: {e}")
             return {
                 "type": "activity_prediction",
                 "activity": "unknown",
-                "confidence": 0.0,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "error": str(e),
             }
+
+    def _predict_mock(self) -> Dict[str, Any]:
+        """
+        Mock prediction for testing without classifier.
+        Returns a simple response based on window state.
+
+        Returns:
+            dict: Mock prediction with activity and timestamp
+        """
+        logger.info(f"Mock prediction generated: walking")
+        return {
+            "type": "activity_prediction",
+            "activity": "walking",  # Mock activity
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "window_size": len(self.window),
+            "method": "mock",
+        }
 
     def reset_window(self):
         """Clear the sliding window buffer."""
@@ -276,5 +217,5 @@ class ActivityPredictor:
             "max_window_size": self.window_size,
             "min_samples": self.min_samples,
             "samples_received": self.samples_received,
-            "is_ready": len(self.window) >= self.min_samples
+            "is_ready": len(self.window) >= self.min_samples,
         }

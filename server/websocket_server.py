@@ -10,8 +10,9 @@ import asyncio
 import json
 import logging
 import argparse
+import os
 from datetime import datetime, timezone
-from typing import Set
+from typing import Set, Optional
 import websockets
 
 from data_collector import DataCollector
@@ -31,8 +32,8 @@ connected_clients: Set = set()
 # Global data directory (will be set in main)
 data_dir: str = "collected_data"
 
-# Note: Both ActivityPredictor and DataCollector are created per-client
-# Each client gets its own instances to avoid interference
+# Global classifier instance (shared across clients if enabled)
+global_classifier = None
 
 
 async def handle_client(websocket):
@@ -43,10 +44,12 @@ async def handle_client(websocket):
 
     sample_count = 0
 
-    # Create per-client instances for both predictor and collector
-    client_predictor = ActivityPredictor()
+    # Create per-client instances
+    # Pass global classifier to predictor (may be None for mock mode)
+    client_predictor = ActivityPredictor(classifier=global_classifier)
     client_collector = DataCollector(data_dir)
-    logger.info(f"Created predictor and collector for client: {client_id}")
+    mode = "RAG-based" if global_classifier else "mock"
+    logger.info(f"Created {mode} predictor and collector for client: {client_id}")
 
     try:
         async for message in websocket:
@@ -89,15 +92,19 @@ async def handle_client(websocket):
 
                     # Only send prediction if one was generated (not None)
                     if prediction is not None:
-                        # Send prediction back to client
-                        await websocket.send(json.dumps(prediction))
+                        try:
+                            # Send prediction back to client
+                            await websocket.send(json.dumps(prediction))
 
-                        # Only log non-buffering predictions
-                        if prediction.get("status") != "buffering":
-                            logger.info(
-                                f"Sent prediction to {client_id}: {prediction['activity']} "
-                                f"({prediction['confidence']:.0%}) [window:{prediction.get('window_size', 0)}]"
-                            )
+                            # Only log non-buffering predictions
+                            if prediction.get("status") != "buffering":
+                                logger.info(
+                                    f"Sent prediction to {client_id}: {prediction['activity']} "
+                                    f"[window:{prediction.get('window_size', 0)}]"
+                                )
+                        except websockets.exceptions.ConnectionClosed:
+                            logger.info(f"Client {client_id} disconnected while sending prediction")
+                            break
 
                 else:
                     logger.warning(
@@ -115,6 +122,8 @@ async def handle_client(websocket):
             logger.info(f"Total samples collected from {client_id}: {sample_count}")
     finally:
         # Clean up per-client resources
+        logger.info(f"Cleaning up resources for client: {client_id}")
+        client_predictor.reset_window()
         client_collector.close_all()
         connected_clients.remove(websocket)
         logger.info(f"Client removed: {client_id} (Total: {len(connected_clients)})")
@@ -152,7 +161,21 @@ if __name__ == "__main__":
     # Set global data directory
     data_dir = args.data_dir
 
-    # Note: Both ActivityPredictor and DataCollector are created per-client in handle_client()
+    # Initialize RAG classifier (auto-detect based on environment variables)
+    try:
+        logger.info("Initializing RAG-based classifier...")
+        from classifier import RAGActivityClassifier
+
+        global_classifier = RAGActivityClassifier(
+            model="gpt-5-mini",
+            fewshot=15,
+            out_fewshot=10,
+        )
+        logger.info("✓ RAG classifier initialized successfully")
+    except Exception as e:
+        logger.warning(f"Could not initialize RAG classifier: {e}")
+        logger.info("Using mock predictor instead")
+        global_classifier = None
 
     try:
         asyncio.run(main())

@@ -47,3 +47,5 @@ env/
 *.csv
 *.json
 data/
+
+.env
