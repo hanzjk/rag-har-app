@@ -19,7 +19,7 @@ from activity_predictor import ActivityPredictor
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -52,11 +52,9 @@ async def handle_client(websocket):
         async for message in websocket:
             try:
                 # Parse incoming message
-                logger.debug(f"Received raw message from {client_id}: {message[:200] if len(message) > 200 else message}")
                 data = json.loads(message)
                 message_type = data.get("type")
                 timestamp = data.get("timestamp", "unknown")
-                logger.debug(f"Parsed message type: {message_type} from {client_id}")
 
                 if message_type == "collect_data":
                     # Data collection mode

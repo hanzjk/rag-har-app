@@ -6,18 +6,56 @@ A complete system for collecting sensor data and recognizing human activities, c
 
 ```
 har-demo/
-├── mobile/              # Flutter mobile application
-│   ├── lib/            # Dart source code
-│   ├── android/        # Android platform code
-│   ├── ios/            # iOS platform code
-│   ├── pubspec.yaml    # Flutter dependencies
-│   └── ...             # Other Flutter files
-├── server/              # Python WebSocket server
-│   ├── websocket_server.py
-│   ├── requirements.txt
-│   └── README.md
-├── CLAUDE.md           # Development guide
-└── README.md           # This file
+├── mobile/                          # Flutter mobile application
+│   ├── lib/                        # Dart source code
+│   │   ├── config/                # Constants and configuration
+│   │   ├── models/                # Data models (SensorData, ActivityType)
+│   │   ├── providers/             # State management (Provider pattern)
+│   │   │   ├── app_state_provider.dart
+│   │   │   ├── sensor_data_provider.dart
+│   │   │   └── activity_provider.dart
+│   │   ├── screens/               # UI screens
+│   │   │   ├── home_screen.dart
+│   │   │   ├── data_collection_screen.dart
+│   │   │   ├── activity_recognition_screen.dart
+│   │   │   └── settings_screen.dart
+│   │   ├── services/              # Business logic
+│   │   │   ├── sensor_service.dart
+│   │   │   ├── demo_sensor_service.dart
+│   │   │   ├── websocket_service.dart
+│   │   │   └── permission_service.dart
+│   │   ├── widgets/               # Reusable UI components
+│   │   └── main.dart              # App entry point
+│   ├── android/                   # Android platform code
+│   │   └── app/src/main/
+│   │       ├── AndroidManifest.xml
+│   │       └── res/xml/
+│   │           └── network_security_config.xml  # WebSocket cleartext config
+│   ├── ios/                       # iOS platform code
+│   ├── test/                      # Tests
+│   └── pubspec.yaml               # Flutter dependencies
+│
+├── server/                         # Python WebSocket server
+│   ├── websocket_server.py        # Main server (handles connections, routing)
+│   ├── data_collector.py          # Data collection and CSV storage
+│   ├── activity_predictor.py      # Activity prediction (sliding window + rules)
+│   ├── requirements.txt           # Python dependencies
+│   ├── collected_data/            # CSV files organized by activity
+│   │   ├── walking.csv
+│   │   ├── running.csv
+│   │   ├── sitting.csv
+│   │   └── standing.csv
+│   ├── venv/                      # Python virtual environment (gitignored)
+│   ├── README.md                  # Server documentation
+│   │
+│   └── rag_pipeline/              # RAG-HAR pipeline
+│       ├── preprocessing.py       # Data cleaning and window segmentation
+│       ├── generate_stats.py      # Statistical feature extraction per window
+│       ├── timeseries_indexing.py # Vector DB creation and indexing
+│       ├── windows/               # Preprocessed windowed data (output)
+│
+├── CLAUDE.md                      # Development guide for Claude Code
+└── README.md                      # This file
 ```
 
 ## 📱 Mobile App (Flutter)
@@ -25,10 +63,22 @@ har-demo/
 Android application for human activity recognition with two modes:
 
 ### Features
-- **Data Collection Mode**: Stream sensor data to server for training
+- **Data Collection Mode**: Stream sensor data to server for ML training datasets
+  - Collect labeled data at 50Hz sampling rate
+  - Export to CSV files organized by activity
+  - Real-time packet counter and duration tracking
 - **Activity Recognition Mode**: Real-time activity prediction display
+  - Buffering indicator during initialization (~2 seconds)
+  - Live activity display with confidence percentage
+  - Activity history with timestamps
+  - Smooth transitions between activities
 - **Demo Mode**: Test without physical sensors (perfect for emulators)
-- **Sensors**: Accelerometer, Gyroscope, Magnetometer
+  - Realistic sensor data simulation
+  - Activity pattern selector (Walking/Running/Sitting/Standing)
+  - Works on any emulator without hardware sensors
+- **Sensors**: Accelerometer, Gyroscope, Magnetometer (50Hz sampling)
+- **State Management**: Provider pattern for reactive UI updates
+- **WebSocket**: Persistent connection with reconnection handling
 
 ### Supported Activities
 - Walking
@@ -98,6 +148,11 @@ python websocket_server.py
 
 ### 2. Configure the App
 
+**For Android Emulator:**
+- Settings → Set WebSocket URL to `ws://10.0.2.2:8080/ws`
+- The emulator uses `10.0.2.2` as an alias for the host machine's `localhost`
+
+**For Physical Android Device:**
 Find your local IP address:
 - **macOS/Linux:** `ifconfig | grep "inet "` or `hostname -I`
 - **Windows:** `ipconfig`
@@ -105,6 +160,7 @@ Find your local IP address:
 In the Flutter app:
 - Settings → Set WebSocket URL to `ws://YOUR_LOCAL_IP:8080/ws`
 - Example: `ws://192.168.1.100:8080/ws`
+- Ensure device is on the same WiFi network as the server
 
 ### 3. Run the App
 
@@ -133,20 +189,21 @@ flutter run
 ## 📊 Data Flow
 
 ```
-Mobile App (Sensors)
+Mobile App (Sensors at 50Hz)
     ↓ [WebSocket]
-Python Server (Prediction Logic)
+Python Server (Sliding Window + Prediction)
     ↓ [WebSocket]
-Mobile App (Display Activity)
+Mobile App (Display Activity & History)
 ```
 
 ### Message Format
 
-**Client → Server:**
+**Client → Server (Data Collection):**
 ```json
 {
-  "type": "sensor_data",
-  "timestamp": "2025-12-26T10:30:45.123Z",
+  "type": "collect_data",
+  "timestamp": "2025-12-27T10:30:45.123Z",
+  "activity": "walking",
   "data": {
     "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
     "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0},
@@ -155,13 +212,37 @@ Mobile App (Display Activity)
 }
 ```
 
-**Server → Client:**
+**Client → Server (Activity Recognition):**
+```json
+{
+  "type": "predict_activity",
+  "timestamp": "2025-12-27T10:30:45.123Z",
+  "data": {
+    "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
+    "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0},
+    "magnetometer": {"x": 23.4, "y": -12.1, "z": 45.6}
+  }
+}
+```
+
+**Server → Client (Collection Acknowledgment):**
+```json
+{
+  "type": "collection_ack",
+  "samples_collected": 150,
+  "activity": "walking",
+  "timestamp": "2025-12-27T10:30:45.678Z"
+}
+```
+
+**Server → Client (Activity Prediction):**
 ```json
 {
   "type": "activity_prediction",
   "activity": "walking",
   "confidence": 0.85,
-  "timestamp": "2025-12-26T10:30:45.678Z"
+  "timestamp": "2025-12-27T10:30:45.678Z",
+  "window_size": 200
 }
 ```
 
@@ -181,53 +262,49 @@ Mobile App (Display Activity)
 3. Phone must be on same network as server
 4. Use server's local IP address in app settings
 
+
+## 🤖 RAG-HAR Pipeline
+
+**Pipeline Components:**
+
+1. **preprocessing.py**: Data cleaning and window segmentation
+   - Load collected CSV files (walking.csv, running.csv, etc.)
+   - Clean and normalize sensor data
+   - Segment into fixed windows (e.g., 200 samples = 4 seconds)
+   - Output: Windowed time-series data
+
+2. **generate_stats.py**: Statistical feature extraction per window
+   - Calculate statistics for each window:
+     - For accelerometer, magnetometer and gyroscope 
+     - Per-axis statistics (accel_x, accel_y, accel_z, etc.)
+   - Output: Feature vectors for each window
+
+3. **timeseries_indexing.py**: Vector database creation
+   - Generate embeddings from statistical features
+   - Index windows into vector database
+   - Store with metadata: activity label, timestamp, confidence
+   - Create retrieval index for similarity search
+
+
+**Advantages:**
+- No traditional model training required
+- Interpretable predictions (show similar past examples)
+- Easy to add new activities (just index more data)
+- Handles edge cases through retrieval
+- Continuously improvable (add more indexed examples)
+
+
+
 ## 🛠️ Technology Stack
 
-- **Mobile:** Flutter (Dart)
-- **Server:** Python with `websockets`
-- **Communication:** WebSocket protocol
+**Current Implementation:**
+- **Mobile:** Flutter (Dart), Provider pattern
+- **Server:** Python with `websockets`, asyncio
+- **Communication:** WebSocket protocol (bidirectional)
 - **State Management:** Provider pattern
-- **Sensors:** sensors_plus package
+- **Sensors:** sensors_plus package (50Hz sampling)
+- **Data Storage:** CSV files (activity-organized)
 
-## 📝 Next Steps
 
-1. **Improve Predictions:** Replace rule-based logic with ML model
-   - Collect training data using Data Collection mode
-   - Train model (scikit-learn, TensorFlow, PyTorch)
-   - Integrate model into server
 
-2. **Add More Activities:** Extend classification
-   - Cycling
-   - Climbing stairs
-   - Lying down
 
-3. **Data Storage:** Save collected data for analysis
-   - SQLite database
-   - CSV export
-   - Cloud storage
-
-4. **UI/UX Enhancements:**
-   - Charts and visualizations
-   - Activity history graphs
-   - Statistics dashboard
-
-## 📄 Documentation
-
-- [CLAUDE.md](CLAUDE.md) - Development guide for Flutter app
-- [server/README.md](server/README.md) - Server documentation
-
-## 📱 Screenshots
-
-*(Add screenshots of your app here)*
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly (both Demo Mode and real sensors)
-5. Submit a pull request
-
-## 📜 License
-
-*(Add your license here)*

@@ -102,24 +102,47 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  Consumer<ActivityProvider>(
-                    builder: (context, activityProvider, _) {
+                  Consumer2<ActivityProvider, SensorDataProvider>(
+                    builder: (context, activityProvider, sensorDataProvider, _) {
+                      // Show buffering state when collecting but no predictions yet
+                      final isBuffering = sensorDataProvider.isCollecting &&
+                                         activityProvider.activityHistory.isEmpty;
+
                       return ActivityDisplay(
                         activity: activityProvider.currentActivity,
                         confidence: activityProvider.confidence,
+                        isBuffering: isBuffering,
                       );
                     },
                   ),
                   const SizedBox(height: 24),
-                  Consumer<ActivityProvider>(
-                    builder: (context, activityProvider, _) {
+                  Consumer2<ActivityProvider, SensorDataProvider>(
+                    builder: (context, activityProvider, sensorDataProvider, _) {
                       if (activityProvider.activityHistory.isEmpty) {
-                        return const Card(
+                        // Show different message when buffering vs not started
+                        final message = sensorDataProvider.isCollecting
+                            ? 'Waiting for predictions...'
+                            : 'No activity history yet';
+
+                        return Card(
                           child: Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: Text(
-                              'No activity history yet',
-                              style: TextStyle(color: Colors.grey),
+                            padding: const EdgeInsets.all(16.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (sensorDataProvider.isCollecting) ...[
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                  const SizedBox(width: 12),
+                                ],
+                                Text(
+                                  message,
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                              ],
                             ),
                           ),
                         );

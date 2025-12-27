@@ -80,26 +80,14 @@ class WebSocketService {
     }
   }
 
-  int _sendCount = 0;
-
   void sendSensorData(SensorData data) {
-    _sendCount++;
-    if (_sendCount % 50 == 0) {
-      print('WebSocketService: sendSensorData called ${_sendCount} times');
-    }
-
     if (_connectionState == ConnectionState.connected && _channel != null) {
       try {
         final jsonData = jsonEncode(data.toJson());
-        if (_sendCount <= 2) {
-          print('WebSocketService: Sending data (first few): $jsonData');
-        }
         _channel!.sink.add(jsonData);
       } catch (e) {
         print('WebSocketService: Error sending sensor data: $e');
       }
-    } else {
-      print('WebSocketService: Cannot send - connection state: $_connectionState, channel: ${_channel != null ? "exists" : "null"}');
     }
   }
 
@@ -111,7 +99,16 @@ class WebSocketService {
       double? confidence;
 
       if (data['type'] == 'activity_prediction') {
-        activity = data['activity'];
+        // Skip buffering/initializing predictions
+        final status = data['status'];
+        final activityName = data['activity'];
+
+        if (status == 'buffering' || activityName == 'initializing') {
+          // Don't add buffering predictions to stream
+          return;
+        }
+
+        activity = activityName;
         confidence = (data['confidence'] as num?)?.toDouble();
       } else if (data.containsKey('prediction')) {
         activity = data['prediction'];

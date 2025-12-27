@@ -52,7 +52,6 @@ class SensorDataProvider extends ChangeNotifier {
   void startCollection() {
     if (_isCollecting) return;
 
-    print('SensorDataProvider: Starting collection with messageType: $_currentMessageType');
     _isCollecting = true;
     _packetsSent = 0;
     _collectionStartTime = DateTime.now();
@@ -72,9 +71,6 @@ class SensorDataProvider extends ChangeNotifier {
       _latestData = labeledData;
       _websocketService.sendSensorData(labeledData);
       _packetsSent++;
-      if (_packetsSent % 50 == 0) {
-        print('SensorDataProvider: Sent $_packetsSent packets (type: $_currentMessageType)');
-      }
       notifyListeners();
     });
   }
