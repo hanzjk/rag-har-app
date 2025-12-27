@@ -41,7 +41,9 @@ async def handle_client(websocket):
     try:
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         connected_clients.add(websocket)
-        logger.info(f"🟢 Client connected: {client_id} (Total: {len(connected_clients)})")
+        logger.info(
+            f"🟢 Client connected: {client_id} (Total: {len(connected_clients)})"
+        )
     except Exception as e:
         logger.error(f"❌ Error in handle_client setup: {e}")
         return
@@ -107,7 +109,9 @@ async def handle_client(websocket):
                                     f"[window:{prediction.get('window_size', 0)}]"
                                 )
                         except websockets.exceptions.ConnectionClosed:
-                            logger.info(f"Client {client_id} disconnected while sending prediction")
+                            logger.info(
+                                f"Client {client_id} disconnected while sending prediction"
+                            )
                             break
 
                 else:
@@ -145,6 +149,7 @@ async def main():
 
     # Show accessible URLs
     import socket
+
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
     logger.info(f"📱 Connect from mobile app using: ws://{local_ip}:{port}/ws")
@@ -184,9 +189,12 @@ if __name__ == "__main__":
         )
         logger.info("✓ RAG classifier initialized successfully")
     except Exception as e:
-        logger.warning(f"Could not initialize RAG classifier: {e}")
-        logger.info("Using mock predictor instead")
+        logger.error(f"FAILED to initialize RAG classifier: {e}", exc_info=True)
+        logger.error(
+            "Server cannot run without RAG classifier. Please fix the error above."
+        )
         global_classifier = None
+        raise  # Stop server startup if classifier fails
 
     try:
         asyncio.run(main())

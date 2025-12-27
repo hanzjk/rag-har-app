@@ -69,7 +69,7 @@ class RAGActivityClassifier:
 
     def __init__(
         self,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-5-mini",
         fewshot: int = 30,
         out_fewshot: int = 20,
     ):
@@ -84,10 +84,10 @@ class RAGActivityClassifier:
         # Hardcoded configuration for har_demo dataset
         self.dataset_name = "har_demo"
         self.collection_name = "har_demo_collection"
-        self.valid_labels = ['walking', 'running', 'sitting', 'standing']
-        self.statistics = ['mean', 'std', 'min', 'max', 'median', 'p25', 'p75']
-        self.sensor_columns = ['accel', 'gyro', 'mag']
-        
+        self.valid_labels = ["walking", "running", "sitting", "standing"]
+        self.statistics = ["mean", "std", "min", "max", "median", "p25", "p75"]
+        self.sensor_columns = ["accel", "gyro", "mag"]
+
         self.model = model
         self.fewshot = fewshot
         self.out_fewshot = out_fewshot
@@ -114,8 +114,12 @@ class RAGActivityClassifier:
         self.milvus_client = MilvusClient(uri=milvus_uri, token=milvus_token)
 
         logger.info(f"RAG Classifier initialized for dataset: {self.dataset_name}")
-        logger.info(f"Collection: {self.collection_name}, Valid labels: {self.valid_labels}")
-        logger.info(f"LLM Model: {self.model}, Retrieval: {self.fewshot} per segment → {self.out_fewshot} final samples")
+        logger.info(
+            f"Collection: {self.collection_name}, Valid labels: {self.valid_labels}"
+        )
+        logger.info(
+            f"LLM Model: {self.model}, Retrieval: {self.fewshot} per segment → {self.out_fewshot} final samples"
+        )
 
         print(f"Initialized RAG Classifier for dataset: {self.dataset_name}")
         print(f"Collection: {self.collection_name}")
@@ -128,107 +132,113 @@ class RAGActivityClassifier:
     def _split_temporal_segments(self, df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         """
         Split window into temporal segments: whole, start, middle, end.
-        
+
         Args:
             df: Window DataFrame
-            
+
         Returns:
             Dict with keys 'whole', 'start', 'middle', 'end'
         """
         total_len = len(df)
         segment_size = total_len // 3
-        
+
         return {
-            'whole': df,
-            'start': df.iloc[:segment_size],
-            'middle': df.iloc[segment_size:2*segment_size],
-            'end': df.iloc[2*segment_size:]
+            "whole": df,
+            "start": df.iloc[:segment_size],
+            "middle": df.iloc[segment_size : 2 * segment_size],
+            "end": df.iloc[2 * segment_size :],
         }
-    
-    def _compute_stats(self, series: pd.Series, stats_list: List[str]) -> Dict[str, float]:
+
+    def _compute_stats(
+        self, series: pd.Series, stats_list: List[str]
+    ) -> Dict[str, float]:
         """
         Compute statistical features for a series.
-        
+
         Args:
             series: Data series
             stats_list: List of statistics to compute
-            
+
         Returns:
             Dict of computed statistics
         """
         stats = {}
         for stat in stats_list:
-            if stat == 'mean':
-                stats['mean'] = series.mean()
-            elif stat == 'std':
-                stats['std'] = series.std()
-            elif stat == 'min':
-                stats['min'] = series.min()
-            elif stat == 'max':
-                stats['max'] = series.max()
-            elif stat == 'median':
-                stats['median'] = series.median()
-            elif stat == 'p25':
-                stats['p25'] = series.quantile(0.25)
-            elif stat == 'p75':
-                stats['p75'] = series.quantile(0.75)
+            if stat == "mean":
+                stats["mean"] = series.mean()
+            elif stat == "std":
+                stats["std"] = series.std()
+            elif stat == "min":
+                stats["min"] = series.min()
+            elif stat == "max":
+                stats["max"] = series.max()
+            elif stat == "median":
+                stats["median"] = series.median()
+            elif stat == "p25":
+                stats["p25"] = series.quantile(0.25)
+            elif stat == "p75":
+                stats["p75"] = series.quantile(0.75)
         return stats
-    
+
     def _generate_feature_description(self, df: pd.DataFrame) -> str:
         """
         Generate feature description from a DataFrame, matching the format
         used in training (with temporal segmentation).
-        
+
         Args:
             df: Window DataFrame with columns like accel_x, accel_y, accel_z, etc.
-            
+
         Returns:
             Formatted feature description string
         """
         # Split into temporal segments
         segments = self._split_temporal_segments(df)
-        
+
         # Sensor metadata: (name, unit)
         sensor_metadata = {
-            'accel': ('Acceleration', 'm/s²'),
-            'gyro': ('Gyroscope', 'rad/s'),
-            'mag': ('Magnetometer', 'μT')
+            "accel": ("Acceleration", "m/s²"),
+            "gyro": ("Gyroscope", "rad/s"),
+            "mag": ("Magnetometer", "μT"),
         }
-        
+
         # Segment name mapping
         segment_names = {
-            'whole': 'Whole Segment',
-            'start': 'Start Segment',
-            'middle': 'Mid Segment',
-            'end': 'End Segment'
+            "whole": "Whole Segment",
+            "start": "Start Segment",
+            "middle": "Mid Segment",
+            "end": "End Segment",
         }
-        
+
         description_parts = []
-        
-        for segment_key in ['whole', 'start', 'middle', 'end']:
+
+        for segment_key in ["whole", "start", "middle", "end"]:
             segment_df = segments[segment_key]
             segment_name = segment_names[segment_key]
             description_parts.append(f"[{segment_name}]")
-            
+
             # Process each sensor
             for prefix in self.sensor_columns:
                 sensor_name, unit = sensor_metadata[prefix]
-                axes = ['x', 'y', 'z']
-                
+                axes = ["x", "y", "z"]
+
                 # Per-axis features
                 for axis_idx, axis in enumerate(axes, start=1):
-                    col_name = f'{prefix}_{axis}'
+                    col_name = f"{prefix}_{axis}"
                     if col_name in segment_df.columns:
-                        stats_dict = self._compute_stats(segment_df[col_name], self.statistics)
-                        stats_str = ', '.join([f"{k}={v:.3f}" for k, v in stats_dict.items()])
+                        stats_dict = self._compute_stats(
+                            segment_df[col_name], self.statistics
+                        )
+                        stats_str = ", ".join(
+                            [f"{k}={v:.3f}" for k, v in stats_dict.items()]
+                        )
                         description_parts.append(
                             f"  {sensor_name} (axis {axis_idx}, {unit}): {stats_str}"
                         )
-            
+
             description_parts.append("")  # Empty line after each segment
-        
+
         return "\n".join(description_parts)
-    
+
     def classify_dataframe(self, df: pd.DataFrame) -> Dict:
         """
         Classify a DataFrame containing sensor data directly.
@@ -241,8 +251,8 @@ class RAGActivityClassifier:
         """
         logger.info(f"Starting classification for {len(df)} sensor samples")
 
-        # Generate feature description from the dataframe
-        logger.info("Generating feature description from sensor data")
+        # Generate feature description from the raw dataframe
+        logger.info("Generating feature description from raw sensor data")
         content = self._generate_feature_description(df)
 
         # Extract temporal segments
@@ -290,7 +300,7 @@ class RAGActivityClassifier:
         # Hybrid search with weighted ranker
         logger.info(
             f"Performing hybrid search in Milvus: {self.fewshot} samples per segment → "
-            f"{self.out_fewshot} final samples (weighted ranker: 0.4/0.2/0.2/0.2)"
+            f"{self.out_fewshot} final samples (weighted ranker: 0.25/0.25/0.25/0.25)"
         )
         docs = self.milvus_client.hybrid_search(
             collection_name=self.collection_name,
@@ -304,7 +314,7 @@ class RAGActivityClassifier:
             ],
             reqs=[req_1, req_2, req_3, req_4],
             limit=self.out_fewshot,
-            ranker=WeightedRanker(0.4, 0.2, 0.2, 0.2),
+            ranker=WeightedRanker(0.25, 0.25, 0.25, 0.25),
         )
         logger.info(f"Hybrid search completed, processing retrieved documents")
 
@@ -334,17 +344,26 @@ class RAGActivityClassifier:
                     f"[End Segment]:\n{entity['stats_end_text']}\n"
                 )
 
+        # Analyze retrieval quality
+        label_counts = pd.Series(retrieved_labels).value_counts()
         logger.info(
             f"Retrieved {len(retrieved_labels)} samples. "
-            f"Label distribution: {dict(pd.Series(retrieved_labels).value_counts())}"
+            f"Label distribution: {dict(label_counts)}"
         )
 
         # Construct prompt for LLM
         retrieved_data = "\n\n".join(sections)
         classes_str = str(self.valid_labels)
 
-        system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str} and nothing else."""
+        system_prompt = f"""You are a multi-class activity classifier using statistical summaries of tri-axis accelerometer, gyroscope, and magnetometer sensors.
 
+INSTRUCTIONS:
+1. Classify the CANDIDATE into exactly ONE class from CLASSES
+2. Use the retrieved samples as REFERENCE PATTERNS.
+
+CLASSES = {classes_str}
+
+"""
         series = (
             f"[Whole Segment]:\n{whole_stats}\n"
             f"[Start Segment]:\n{start_stats}\n"
@@ -352,10 +371,12 @@ class RAGActivityClassifier:
             f"[End Segment]:\n{end_stats}\n"
         )
 
-        user_prompt = f"""You are given summary statistics for sensor data across temporal segments for labeled samples and one unlabeled candidate.\n\n--- CANDIDATE ---\nTime Series:\n{series}\n\n--- LABELED SAMPLES ---\n{retrieved_data}\n"""
+        user_prompt = f"""\n--- CANDIDATE ---\n{series}\n\n--- LABELED SAMPLES ---\n{retrieved_data}\n"""
 
         # Call LLM with retry logic
-        logger.info(f"Calling LLM ({self.model}) for classification with retrieved context")
+        logger.info(
+            f"Calling LLM ({self.model}) for classification with retrieved context"
+        )
         success = False
         retry_count = 0
         while not success:
@@ -373,24 +394,25 @@ class RAGActivityClassifier:
                 logger.info(f"LLM response received: {prediction}")
             except openai.RateLimitError:
                 retry_count += 1
-                logger.warning(f"Rate limit reached (retry {retry_count}). Waiting 65 seconds...")
+                logger.warning(
+                    f"Rate limit reached (retry {retry_count}). Waiting 65 seconds..."
+                )
                 print("Rate limit reached. Waiting 65 seconds...")
                 time.sleep(65)
             except Exception as e:
                 retry_count += 1
-                logger.warning(f"OpenAI API error (retry {retry_count}): {e}. Waiting 10 seconds...")
+                logger.warning(
+                    f"OpenAI API error (retry {retry_count}): {e}. Waiting 10 seconds..."
+                )
                 print(f"OpenAI API error: {e}. Waiting 10 seconds...")
                 time.sleep(10)
 
         # Display results
         retrieved_labels_display = [str(label) for label in retrieved_labels]
-        logger.info(
-            f"Classification complete - Prediction: {prediction}, "
-            f"Retrieved classes: {retrieved_labels_display[:10]}"
-        )
+
         print(f"\n{'='*70}")
         print(f"Real-time Classification")
-        print(f"Retrieved classes: {retrieved_labels_display[:10]}")  # Show first 10
+        print(f"Retrieved classes: {retrieved_labels_display}")  # Show all
         print(f"LLM Prediction: {prediction}")
         print(f"{'='*70}")
 
@@ -398,11 +420,13 @@ class RAGActivityClassifier:
             "prediction": prediction,
             "retrieved_labels": list(set(retrieved_labels)),
             "num_retrieved": len(retrieved_labels),
-            "feature_description": content
+            "feature_description": content,
         }
-        logger.info(f"Returning classification result with {result['num_retrieved']} retrieved samples")
+        logger.info(
+            f"Returning classification result with {result['num_retrieved']} retrieved samples"
+        )
         return result
-    
+
     def predict_from_window(self, window_data: list) -> Dict[str, Any]:
         """
         Simplified prediction method for real-time use in activity_predictor.
@@ -425,16 +449,12 @@ class RAGActivityClassifier:
             result = self.classify_dataframe(df)
 
             # Get prediction from result
-            prediction = result['prediction']
+            prediction = result["prediction"]
 
             logger.info(f"Final result: {prediction}")
 
-            return {
-                "activity": prediction
-            }
+            return {"activity": prediction}
 
         except Exception as e:
             logger.error(f"Error in predict_from_window: {e}", exc_info=True)
-            return {
-                "activity": "unknown"
-            }
+            return {"activity": "unknown"}

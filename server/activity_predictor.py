@@ -46,11 +46,16 @@ class ActivityPredictor:
         self.samples_received = 0
         self.samples_since_last_prediction = 0
 
-        mode = "RAG-based" if classifier else "mock"
-        logger.info(
-            f"Activity predictor initialized with {mode} classification "
-            f"(window_size={window_size}, min_samples={min_samples}, step_size={step_size})"
-        )
+        if classifier:
+            logger.info(
+                f"Activity predictor initialized with RAG classifier "
+                f"(window_size={window_size}, min_samples={min_samples}, step_size={step_size})"
+            )
+        else:
+            logger.warning(
+                f"Activity predictor initialized WITHOUT classifier - predictions will fail! "
+                f"(window_size={window_size}, min_samples={min_samples}, step_size={step_size})"
+            )
 
     def predict(self, sensor_data: dict) -> Dict[str, Any] | None:
         """
@@ -139,14 +144,18 @@ class ActivityPredictor:
                 "status": "buffering",
             }
 
-        # Use RAG classifier if available
-        if self.classifier:
-            logger.info("Using RAG-based classifier for prediction")
-            return self._predict_with_rag_classifier()
-        else:
-            # Fallback for testing without classifier
-            logger.error("no RAG classifier available")
-            return self._predict_mock()
+        # Use RAG classifier (required)
+        if not self.classifier:
+            logger.error("No RAG classifier available - cannot make predictions")
+            return {
+                "type": "activity_prediction",
+                "activity": "error",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "error": "RAG classifier not initialized",
+            }
+
+        logger.info("Using RAG-based classifier for prediction")
+        return self._predict_with_rag_classifier()
 
     def _predict_with_rag_classifier(self) -> Dict[str, Any]:
         """
@@ -174,30 +183,13 @@ class ActivityPredictor:
             }
 
         except Exception as e:
-            logger.error(f"Error predicting with RAG classifier: {e}")
+            logger.error(f"Error predicting with RAG classifier: {e}", exc_info=True)
             return {
                 "type": "activity_prediction",
                 "activity": "unknown",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "error": str(e),
             }
-
-    def _predict_mock(self) -> Dict[str, Any]:
-        """
-        Mock prediction for testing without classifier.
-        Returns a simple response based on window state.
-
-        Returns:
-            dict: Mock prediction with activity and timestamp
-        """
-        logger.info(f"Mock prediction generated: walking")
-        return {
-            "type": "activity_prediction",
-            "activity": "walking",  # Mock activity
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "window_size": len(self.window),
-            "method": "mock",
-        }
 
     def reset_window(self):
         """Clear the sliding window buffer."""
