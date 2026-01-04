@@ -1,270 +1,183 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Development guide for Claude Code when working with this RAG-HAR system.
 
 ## Project Overview
 
-This is a monorepo containing a complete human activity recognition system:
+RAG-based Human Activity Recognition system with Flutter mobile app and Python WebSocket server.
 
-1. **Flutter Mobile App** (root directory): Android application for sensor data collection and activity recognition
-2. **Python WebSocket Server** (`server/`): Backend server for receiving sensor data and sending activity predictions
-
-### Mobile App
-
-Android application for human activity recognition with two screens:
-
-- **Data Collection Screen**: Extracts data from motion sensors and sends it to the server for dataset creation
-- **Activity Recognition Screen**: Sends sensor data in real time and displays predicted activity on screen
-
-### Server
-
-Python WebSocket server that dynamically handles different message types:
-- Receives sensor data from the mobile app
-- Processes `collect_data` messages to save labeled data for ML training
-- Processes `predict_activity` messages to perform real-time activity classification
-- Supports both operations simultaneously for different clients
+**Mobile App**: Android app for sensor data collection and real-time activity recognition
+**Server**: WebSocket server with RAG pipeline for activity classification using LLM reasoning
 
 ## Repository Structure
 
 ```
 har-demo/
-├── mobile/              # Flutter mobile application
-│   ├── lib/            # Dart source code
-│   │   ├── config/    # Constants and configuration
-│   │   ├── models/    # Data models
-│   │   ├── services/  # Business logic (sensors, WebSocket, permissions)
-│   │   ├── providers/ # State management (Provider pattern)
-│   │   ├── screens/   # UI screens
-│   │   └── widgets/   # Reusable UI components
-│   ├── android/       # Android platform code
-│   ├── ios/           # iOS platform code
-│   ├── test/          # Tests
-│   └── pubspec.yaml   # Flutter dependencies
-├── server/             # Python WebSocket server
-│   ├── websocket_server.py
-│   ├── requirements.txt
-│   └── README.md
-├── CLAUDE.md          # This file
-└── README.md          # Project documentation
+├── mobile/              # Flutter mobile app
+│   ├── lib/
+│   │   ├── models/     # SensorData, ActivityType
+│   │   ├── providers/  # AppStateProvider, SensorDataProvider, ActivityProvider
+│   │   ├── services/   # SensorService, WebSocketService, PermissionService
+│   │   ├── screens/    # Data collection, Activity recognition, Settings
+│   │   └── widgets/    # Reusable UI components
+│   └── pubspec.yaml
+│
+├── server/             # Python WebSocket server + RAG pipeline
+│   ├── websocket_server.py      # WebSocket handler
+│   ├── data_collector.py        # Save labeled sensor data
+│   ├── activity_predictor.py    # Sliding window + RAG classifier
+│   ├── rag-har/                 # RAG pipeline
+│   │   ├── preprocessing.py     # Train/test split
+│   │   ├── features.py          # Statistical feature extraction
+│   │   ├── timeseries_indexing.py  # Vector database indexing
+│   │   ├── classifier.py        # RAG-based classifier
+│   │   └── rag_pipeline.py      # End-to-end pipeline
+│   └── requirements.txt
+│
+└── README.md
 ```
 
 ## Development Commands
 
-### Server Commands
+### Server
 
 ```bash
-# Navigate to server directory
 cd server
-
-# Install Python dependencies
 pip install -r requirements.txt
 
-# Run the WebSocket server
-python websocket_server.py
+# Set environment variables
+export OPENAI_API_KEY="your-key"
+export ZILLIZ_CLOUD_URI="your-uri"
+export ZILLIZ_CLOUD_API_KEY="your-key"
 
-# Optional: specify custom data directory
-python websocket_server.py --data-dir my_data
+python websocket_server.py  # Runs on ws://0.0.0.0:8000
 ```
 
-Server runs on `ws://0.0.0.0:8080` and handles both data collection and activity prediction dynamically based on message type. For detailed server documentation, see `server/README.md`.
-
-### Mobile App Commands
-
-All Flutter commands must be run from the `mobile/` directory:
+### Mobile App
 
 ```bash
-# Navigate to mobile directory
 cd mobile
-
-# Get dependencies
 flutter pub get
-
-# Run the app
 flutter run
-
-# Run tests
-flutter test
-
-# Analyze code
-flutter analyze
-
-# Format code
-dart format .
-
-# Build for Android
-flutter build apk
-flutter build appbundle
-
-# Build for iOS
-flutter build ios
 ```
 
 ## Architecture
 
-### State Management
-The app uses Provider pattern for state management with three main providers:
-- `AppStateProvider` - manages WebSocket URL and connection state
-- `SensorDataProvider` - handles sensor data collection and streaming with different message types
-- `ActivityProvider` - manages activity predictions and history
+### State Management (Provider Pattern)
+- `AppStateProvider` - WebSocket URL, connection state
+- `SensorDataProvider` - Sensor collection, window-based buffering
+- `ActivityProvider` - Activity predictions, history
 
-### Services Layer
-- `SensorService` - aggregates accelerometer, gyroscope, and magnetometer data at 50Hz sampling rate
-- `WebSocketService` - handles bidirectional WebSocket communication
-- `PermissionService` - manages runtime sensor permissions
+### Services
+- `SensorService` - Accelerometer + gyroscope at 50Hz
+- `WebSocketService` - Bidirectional WebSocket communication
+- `PermissionService` - Runtime sensor permissions
 
-## WebSocket Message Format
+## WebSocket Protocol
 
 ### Client → Server
 
-**Data Collection Message:**
+**Data Collection:**
 ```json
 {
   "type": "collect_data",
-  "timestamp": "2025-12-26T10:30:45.123Z",
+  "subject_id": "subject0",
   "activity": "walking",
+  "timestamp": "2025-01-05T10:30:45.123Z",
   "data": {
     "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
-    "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0},
-    "magnetometer": {"x": 23.4, "y": -12.1, "z": 45.6}
+    "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0}
   }
 }
 ```
 
-**Activity Recognition Message:**
+**Stop Collection (triggers RAG pipeline):**
 ```json
 {
-  "type": "predict_activity",
-  "timestamp": "2025-12-26T10:30:45.123Z",
-  "data": {
-    "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
-    "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0},
-    "magnetometer": {"x": 23.4, "y": -12.1, "z": 45.6}
-  }
-}
-```
-
-### Server → Client
-
-**Collection Acknowledgment:**
-```json
-{
-  "type": "collection_ack",
-  "samples_collected": 150,
-  "activity": "walking",
-  "timestamp": "2025-12-26T10:30:45.123Z"
+  "type": "stop_collection",
+  "timestamp": "2025-01-05T10:30:45.123Z"
 }
 ```
 
 **Activity Prediction:**
 ```json
 {
-  "type": "activity_prediction",
-  "activity": "walking",
-  "confidence": 0.92,
-  "timestamp": "2025-12-26T10:30:45.123Z"
+  "type": "predict_activity",
+  "timestamp": "2025-01-05T10:30:45.123Z",
+  "data": {
+    "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
+    "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0}
+  }
 }
 ```
 
-## Configuration
+### Server → Client
 
-Default WebSocket URL: `ws://192.168.1.100:8080/ws`
-
-The URL can be changed in the Settings screen and is persisted using SharedPreferences.
+**Activity Prediction:**
+```json
+{
+  "type": "activity_prediction",
+  "activity": "walking",
+  "reasoning": "The acceleration patterns show periodic vertical oscillations...",
+  "timestamp": "2025-01-05T10:30:45.678Z",
+  "window_size": 200,
+  "method": "rag_classifier"
+}
+```
 
 ## Supported Activities
 
-- Walking
-- Running
-- Sitting
-- Standing
-- Walking Upstairs
-- Walking Downstairs
+- walking
+- running
+- sitting
+- standing
+- jumping
+- lying
 
-## Full System Testing
+## RAG Pipeline
 
-1. **Start the server:**
-   ```bash
-   cd server
-   python websocket_server.py
-   ```
+**Data Collection Flow:**
+1. Mobile app sends labeled sensor data (`collect_data`)
+2. Server saves to `collected_data/subject_timestamp/activity.csv`
+3. Mobile sends `stop_collection` signal
+4. Server runs RAG pipeline:
+   - Preprocessing: Train/test split, windowing
+   - Feature extraction: Statistical features with temporal segmentation
+   - Indexing: Embed and store in Milvus/Zilliz
+   - Ready for classification
 
-2. **Run the mobile app:**
-   ```bash
-   cd mobile
-   flutter run
-   ```
+**Activity Prediction Flow:**
+1. Mobile sends 200 samples (4 seconds at 50Hz)
+2. ActivityPredictor buffers samples
+3. RAG Classifier:
+   - Extract features (temporal segments: whole, start, mid, end)
+   - Generate embeddings (OpenAI text-embedding-3-small)
+   - Hybrid search in Milvus (retrieve top 10 similar samples)
+   - LLM classification (GPT-4o-mini with retrieved context)
+4. Server sends prediction with reasoning
 
-3. **Find your local IP:**
-   ```bash
-   # macOS/Linux
-   ifconfig | grep "inet " | grep -v 127.0.0.1
+**Configuration:**
+- Window size: 200 samples (4 seconds)
+- Step size: 200 samples (non-overlapping)
+- Retrieval: 15 samples per segment → 10 final
+- Sensors: Accelerometer, Gyroscope (6 axes)
 
-   # Windows
-   ipconfig
-   ```
+## Configuration
 
-4. **Deploy app to physical Android device** (USB or wireless debugging)
+**Default WebSocket URL:** `ws://192.168.1.100:8000/ws`
 
-5. **Configure the app:**
-   - Ensure device is on same network as server
-   - Settings → Set WebSocket URL to `ws://YOUR_IP:8080/ws`
+**Android Emulator:** `ws://10.0.2.2:8000/ws`
 
-6. **Test Data Collection:**
-   - Go to Data Collection screen
-   - Select an activity label (e.g., Walking)
-   - Tap Start
-   - Perform the activity for 10-20 seconds
-   - Tap Stop
-   - Data is sent to server and saved
+**Physical Device:** `ws://YOUR_LOCAL_IP:8000/ws` (same network as server)
 
-7. **Test Activity Recognition:**
-   - Go to Activity Recognition screen
-   - Tap Start
-   - Perform an activity
-   - Watch real-time predictions from the server
+## Testing
 
-## Server Implementation Notes
+**Data Collection Mode:**
+1. Select activity label
+2. Start collection (perform activity 10-20 seconds)
+3. Stop (triggers RAG pipeline)
 
-The server uses a **message type-based architecture**:
-- No startup mode configuration required
-- Dynamically handles both `collect_data` and `predict_activity` message types
-- Per-client instances of both DataCollector and ActivityPredictor
-- Same client can switch between collection and prediction without disconnecting
-
-The current prediction algorithm uses **rule-based classification** with **stepped windowing**:
-- **Sampling rate:** 50 Hz (50 samples per second)
-- **Window size:** 200 samples (4 seconds of data)
-- **Step size:** 50 samples (predictions every 1 second)
-- **Overlap:** 75% (150 samples overlap between consecutive windows)
-- **Buffering:** 2 seconds (100 samples) before first prediction
-- Calculates accelerometer and gyroscope magnitudes with statistical features
-- Simple threshold-based activity detection
-- ~75-90% confidence scores
-
-**Prediction Timeline:**
-- 0-2 seconds: Buffering (collecting minimum data)
-- 2 seconds: First prediction (window has 100 samples)
-- 3 seconds: Second prediction (window has 150 samples)
-- 4 seconds: Third prediction (window full with 200 samples)
-- 4+ seconds: Predictions every 1 second with full 4-second window
-
-### Replacing with ML Model
-
-To integrate a machine learning model:
-
-1. Collect training data using Data Collection mode
-2. Train model (TensorFlow, PyTorch, scikit-learn)
-3. Update `predict_activity()` function in `websocket_server.py`
-4. Load model at server startup
-
-Example structure:
-```python
-import pickle
-model = pickle.load(open('model.pkl', 'rb'))
-
-def predict_activity(sensor_data):
-    features = extract_features(sensor_data)
-    prediction = model.predict([features])[0]
-    confidence = model.predict_proba([features]).max()
-    return {"activity": prediction, "confidence": confidence}
-```
+**Activity Recognition Mode:**
+1. Start recognition
+2. Perform activity
+3. View prediction + LLM reasoning every 4 seconds
