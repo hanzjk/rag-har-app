@@ -1,276 +1,229 @@
-# Human Activity Recognition System
+# RAG-HAR: Human Activity Recognition with Retrieval-Augmented Generation
 
-A complete system for collecting sensor data and recognizing human activities, consisting of a Flutter mobile app and a Python WebSocket server.
+Real-time human activity recognition system using RAG-based classification with LLM reasoning.
 
-## 🏗️ Project Structure
+## System Architecture
+
+```
+Flutter Mobile App
+    ↓ WebSocket
+Python Server (RAG-HAR Pipeline)
+    ├─ Feature Extraction (temporal segmentation)
+    ├─ Vector Search (Milvus/Zilliz)
+    └─ LLM Classification (GPT-4o-mini)
+    ↓ WebSocket
+Mobile App (activity + reasoning)
+```
+
+## Project Structure
 
 ```
 har-demo/
-├── mobile/                          # Flutter mobile application
-│   ├── lib/                        # Dart source code
-│   │   ├── config/                # Constants and configuration
-│   │   ├── models/                # Data models (SensorData, ActivityType)
-│   │   ├── providers/             # State management (Provider pattern)
-│   │   │   ├── app_state_provider.dart
-│   │   │   ├── sensor_data_provider.dart
-│   │   │   └── activity_provider.dart
-│   │   ├── screens/               # UI screens
-│   │   │   ├── home_screen.dart
-│   │   │   ├── data_collection_screen.dart
-│   │   │   ├── activity_recognition_screen.dart
-│   │   │   └── settings_screen.dart
-│   │   ├── services/              # Business logic
-│   │   │   ├── sensor_service.dart
-│   │   │   ├── demo_sensor_service.dart
-│   │   │   ├── websocket_service.dart
-│   │   │   └── permission_service.dart
-│   │   ├── widgets/               # Reusable UI components
-│   │   └── main.dart              # App entry point
-│   ├── android/                   # Android platform code
-│   │   └── app/src/main/
-│   │       ├── AndroidManifest.xml
-│   │       └── res/xml/
-│   │           └── network_security_config.xml  # WebSocket cleartext config
-│   ├── ios/                       # iOS platform code
-│   ├── test/                      # Tests
-│   └── pubspec.yaml               # Flutter dependencies
+├── mobile/              # Flutter Android app
+│   ├── lib/
+│   │   ├── providers/  # State management (Provider pattern)
+│   │   ├── services/   # Sensors, WebSocket, permissions
+│   │   ├── screens/    # Data collection, Activity recognition, Settings
+│   │   └── widgets/    # UI components
+│   └── pubspec.yaml
 │
-├── server/                         # Python WebSocket server
-│   ├── websocket_server.py        # Main server (handles connections, routing)
-│   ├── data_collector.py          # Data collection and CSV storage
-│   ├── activity_predictor.py      # Activity prediction (sliding window + rules)
-│   ├── requirements.txt           # Python dependencies
-│   ├── collected_data/            # CSV files organized by activity
-│   │   ├── walking.csv
-│   │   ├── running.csv
-│   │   ├── sitting.csv
-│   │   └── standing.csv
-│   ├── venv/                      # Python virtual environment (gitignored)
-│   └── README.md                  # Server documentation
+├── server/             # Python WebSocket server + RAG pipeline
+│   ├── websocket_server.py     # WebSocket handler
+│   ├── data_collector.py       # Save labeled sensor data
+│   ├── activity_predictor.py   # Sliding window + RAG classifier
+│   ├── rag-har/                # RAG pipeline
+│   │   ├── preprocessing.py    # Train/test split
+│   │   ├── features.py         # Statistical feature extraction
+│   │   ├── timeseries_indexing.py  # Vector database indexing
+│   │   ├── classifier.py       # RAG-based classifier
+│   │   └── rag_pipeline.py     # End-to-end pipeline
+│   └── requirements.txt
 │
-│
-├── CLAUDE.md                      # Development guide for Claude Code
-└── README.md                      # This file
+└── CLAUDE.md          # Development guide
 ```
 
-## 📱 Mobile App (Flutter)
+## Features
 
-Android application for human activity recognition with two modes:
+### Mobile App
+- **Data Collection Mode**: Label and collect sensor data for training
+  - 50Hz sampling (accelerometer, gyroscope)
+  - Subject ID and activity labeling
+  - CSV export with timestamps
 
-### Features
-- **Data Collection Mode**: Stream sensor data to server for ML training datasets
-  - Collect labeled data at 50Hz sampling rate
-  - Export to CSV files organized by activity
-  - Real-time packet counter and duration tracking
-- **Activity Recognition Mode**: Real-time activity prediction display
-  - Buffering indicator during initialization (~2 seconds)
-  - Live activity display with confidence percentage
-  - Activity history with timestamps
-  - Smooth transitions between activities
-- **Demo Mode**: Test without physical sensors (perfect for emulators)
-  - Realistic sensor data simulation
-  - Activity pattern selector (Walking/Running/Sitting/Standing)
-  - Works on any emulator without hardware sensors
-- **Sensors**: Accelerometer, Gyroscope, Magnetometer (50Hz sampling)
-- **State Management**: Provider pattern for reactive UI updates
-- **WebSocket**: Persistent connection with reconnection handling
+- **Activity Recognition Mode**: Real-time prediction with explanation
+  - Window-based collection (200 samples = 4 seconds)
+  - Activity display with LLM reasoning
+  - History tracking
 
-### Supported Activities
+- **Demo Mode**: Test without physical sensors (works on emulators)
+
+### Server (RAG-HAR Pipeline)
+
+**Data Collection:**
+- Saves labeled sensor data to `collected_data/subject_timestamp/`
+- Triggers RAG pipeline on `stop_collection` signal
+
+**RAG Pipeline Stages:**
+1. **Preprocessing**: Train/test split, windowing
+2. **Feature Extraction**: Statistical features with temporal segmentation (whole, start, mid, end)
+3. **Vector Indexing**: Embed and store in Milvus/Zilliz
+4. **Classification**: Hybrid search + LLM reasoning
+
+**Activity Prediction:**
+- Real-time classification using RAG
+- Returns activity label + reasoning explanation
+- Non-overlapping 4-second windows
+
+## Supported Activities
+
 - Walking
 - Running
 - Sitting
 - Standing
+- Jumping
+- Lying
 
-### Quick Start
+## Quick Start
 
-1. **Navigate to mobile directory:**
-```bash
-cd mobile
-```
+### 1. Server Setup
 
-2. **Install dependencies:**
-```bash
-flutter pub get
-```
-
-3. **Run the app:**
-```bash
-flutter run
-```
-
-4. **Enable Demo Mode (optional):**
-   - Settings → Enable Demo Mode
-   - Restart app
-   - Test on any emulator/simulator
-
-For detailed Flutter development commands, see [CLAUDE.md](CLAUDE.md).
-
-## 🖥️ WebSocket Server (Python)
-
-Python server that receives sensor data and sends back activity predictions.
-
-### Quick Start
-
-1. **Navigate to server directory:**
 ```bash
 cd server
-```
 
-2. **Install dependencies:**
-```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-3. **Run the server:**
-```bash
+# Set environment variables
+export OPENAI_API_KEY="your-key"
+export ZILLIZ_CLOUD_URI="your-uri"
+export ZILLIZ_CLOUD_API_KEY="your-key"
+
+# Run server
 python websocket_server.py
 ```
 
-Server starts on `ws://0.0.0.0:8080`
+Server runs on `ws://0.0.0.0:8000`
 
-For detailed server documentation, see [server/README.md](server/README.md).
-
-
-## 🚀 Full System Setup
-
-### 1. Start the Server
+### 2. Mobile App Setup
 
 ```bash
-# Terminal 1
-cd server
-pip install -r requirements.txt
-python websocket_server.py
-```
-
-### 2. Configure the App
-
-**For Android Emulator:**
-- Settings → Set WebSocket URL to `ws://10.0.2.2:8080/ws`
-- The emulator uses `10.0.2.2` as an alias for the host machine's `localhost`
-
-**For Physical Android Device:**
-Find your local IP address:
-- **macOS/Linux:** `ifconfig | grep "inet "` or `hostname -I`
-- **Windows:** `ipconfig`
-
-In the Flutter app:
-- Settings → Set WebSocket URL to `ws://YOUR_LOCAL_IP:8080/ws`
-- Example: `ws://192.168.1.100:8080/ws`
-- Ensure device is on the same WiFi network as the server
-
-### 3. Run the App
-
-```bash
-# Terminal 2
 cd mobile
+
+# Install dependencies
 flutter pub get
+
+# Run app
 flutter run
 ```
 
-### 4. Test the System
+### 3. Configure Connection
 
-**Option A: Demo Mode (Recommended for testing)**
-1. Settings → Enable Demo Mode
-2. Go to Data Collection or Activity Recognition
-3. Select activity pattern (Walking/Running/Sitting/Standing)
-4. Tap Start
-5. Watch predictions in real-time
+**Android Emulator:**
+- Settings → WebSocket URL: `ws://10.0.2.2:8000/ws`
 
-**Option B: Real Sensors**
-1. Deploy to physical Android device
-2. Go to Activity Recognition mode
-3. Tap Start
-4. Perform activities and see predictions
+**Physical Device:**
+```bash
+# Find your local IP
+ifconfig | grep "inet " | grep -v 127.0.0.1
 
-## 📊 Data Flow
-
-```
-Mobile App (Sensors at 50Hz)
-    ↓ [WebSocket]
-Python Server (Sliding Window + Prediction)
-    ↓ [WebSocket]
-Mobile App (Display Activity & History)
+# In app settings
+ws://YOUR_LOCAL_IP:8000/ws
 ```
 
-### Message Format
+## Usage
 
-**Client → Server (Data Collection):**
+### Collect Training Data
+
+1. Open app → Data Collection
+2. Select activity label
+3. Tap Start, perform activity for 10-20 seconds
+4. Tap Stop (triggers RAG pipeline automatically)
+5. Server processes and indexes data to vector database
+
+### Real-Time Recognition
+
+1. Open app → Activity Recognition
+2. Tap Start
+3. Perform activity
+4. View prediction with LLM reasoning every 4 seconds
+
+## WebSocket Protocol
+
+### Client → Server
+
+**Collect Data:**
 ```json
 {
   "type": "collect_data",
-  "timestamp": "2025-12-27T10:30:45.123Z",
+  "subject_id": "subject0",
   "activity": "walking",
+  "timestamp": "2025-01-05T10:30:45.123Z",
   "data": {
     "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
     "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0},
-    "magnetometer": {"x": 23.4, "y": -12.1, "z": 45.6}
   }
 }
 ```
 
-**Client → Server (Activity Recognition):**
+**Stop Collection:**
+```json
+{
+  "type": "stop_collection",
+  "timestamp": "2025-01-05T10:30:45.123Z"
+}
+```
+
+**Predict Activity:**
 ```json
 {
   "type": "predict_activity",
-  "timestamp": "2025-12-27T10:30:45.123Z",
+  "timestamp": "2025-01-05T10:30:45.123Z",
   "data": {
     "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
     "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0},
-    "magnetometer": {"x": 23.4, "y": -12.1, "z": 45.6}
   }
 }
 ```
 
-**Server → Client (Collection Acknowledgment):**
-```json
-{
-  "type": "collection_ack",
-  "samples_collected": 150,
-  "activity": "walking",
-  "timestamp": "2025-12-27T10:30:45.678Z"
-}
-```
+### Server → Client
 
-**Server → Client (Activity Prediction):**
+**Activity Prediction:**
 ```json
 {
   "type": "activity_prediction",
   "activity": "walking",
-  "confidence": 0.85,
-  "timestamp": "2025-12-27T10:30:45.678Z",
-  "window_size": 200
+  "reasoning": "The acceleration patterns show periodic vertical oscillations...",
+  "timestamp": "2025-01-05T10:30:45.678Z",
+  "window_size": 200,
+  "method": "rag_classifier"
 }
 ```
 
-## 🧪 Development Workflow
+## RAG Classification Details
 
-### Testing Without Physical Device
+**How it works:**
 
-1. Enable Demo Mode in the app
-2. Run on emulator/simulator
-3. Demo Mode generates realistic sensor patterns
-4. Server receives simulated data and sends predictions
+1. **Feature Extraction**: Split 4-second window into temporal segments (whole, start 33%, mid 33%, end 33%)
+2. **Embedding**: Generate vector embeddings for each segment using OpenAI text-embedding-3-small
+3. **Retrieval**: Hybrid search in Milvus for top 10 similar training samples (15 per segment → weighted reranking)
+4. **Classification**: GPT-4o-mini analyzes retrieved examples and predicts activity with reasoning
 
-### Testing With Physical Device
+**Why RAG?**
+- ✅ Human-readable explanations for each prediction
+- ✅ Semantic understanding vs pattern matching
+- ✅ Add new activities without retraining (just update vector DB)
+- ✅ Leverages LLM knowledge about physics and motion
 
-1. Connect Android device via USB
-2. Run `flutter run`
-3. Phone must be on same network as server
-4. Use server's local IP address in app settings
-```
-echo "Your WebSocket URL is: ws://$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1):8000/ws"
-```
+## Technology Stack
 
-## 🛠️ Technology Stack
+- **Mobile**: Flutter, Provider, sensors_plus
+- **Server**: Python, websockets, asyncio
+- **RAG**: LangChain, OpenAI (embeddings + GPT-4o-mini)
+- **Vector DB**: Milvus/Zilliz Cloud
+- **Features**: pandas, numpy (statistical feature extraction)
 
-**Current Implementation:**
-- **Mobile:** Flutter (Dart), Provider pattern
-- **Server:** Python with `websockets`, asyncio
-- **Communication:** WebSocket protocol (bidirectional)
-- **State Management:** Provider pattern
-- **Sensors:** sensors_plus package (50Hz sampling)
-- **Data Storage:** CSV files (activity-organized)
+## Development
 
+For detailed development guide, see [CLAUDE.md](CLAUDE.md).
 
-
-
+For server-specific documentation, see [server/README.md](server/README.md).
