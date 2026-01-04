@@ -96,8 +96,7 @@ Mobile app sends `predict_activity` messages → Server uses RAG classifier:
   "subject_id": "subject0",
   "data": {
     "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
-    "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0},
-    "magnetometer": {"x": 23.4, "y": -12.1, "z": 45.6}
+    "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0}
   }
 }
 ```
@@ -109,8 +108,7 @@ Mobile app sends `predict_activity` messages → Server uses RAG classifier:
   "timestamp": "2026-01-04T10:30:45.123Z",
   "data": {
     "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
-    "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0},
-    "magnetometer": {"x": 23.4, "y": -12.1, "z": 45.6}
+    "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0}
   }
 }
 ```

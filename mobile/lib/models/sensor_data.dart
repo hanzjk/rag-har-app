@@ -4,7 +4,6 @@ class SensorData {
   final DateTime timestamp;
   final SensorReading accelerometer;
   final SensorReading gyroscope;
-  final SensorReading magnetometer;
   final String? activityLabel;
   final String messageType;
   final String? subjectId;
@@ -13,7 +12,6 @@ class SensorData {
     required this.timestamp,
     required this.accelerometer,
     required this.gyroscope,
-    required this.magnetometer,
     this.activityLabel,
     this.messageType = 'sensor_data',
     this.subjectId = 'subject0',
@@ -22,7 +20,6 @@ class SensorData {
   factory SensorData.fromSensorEvents({
     required AccelerometerEvent accelerometerEvent,
     required GyroscopeEvent gyroscopeEvent,
-    required MagnetometerEvent magnetometerEvent,
   }) {
     return SensorData(
       timestamp: DateTime.now(),
@@ -36,11 +33,6 @@ class SensorData {
         y: gyroscopeEvent.y,
         z: gyroscopeEvent.z,
       ),
-      magnetometer: SensorReading(
-        x: magnetometerEvent.x,
-        y: magnetometerEvent.y,
-        z: magnetometerEvent.z,
-      ),
     );
   }
 
@@ -51,7 +43,6 @@ class SensorData {
       'data': {
         'accelerometer': accelerometer.toJson(),
         'gyroscope': gyroscope.toJson(),
-        'magnetometer': magnetometer.toJson(),
       }
     };
 

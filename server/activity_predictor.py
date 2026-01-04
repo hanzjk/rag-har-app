@@ -98,7 +98,6 @@ class ActivityPredictor:
         try:
             accel = sensor_data["data"]["accelerometer"]
             gyro = sensor_data["data"]["gyroscope"]
-            mag = sensor_data["data"]["magnetometer"]
 
             # Store flattened sensor reading
             sample = {
@@ -109,9 +108,6 @@ class ActivityPredictor:
                 "gyro_x": gyro["x"],
                 "gyro_y": gyro["y"],
                 "gyro_z": gyro["z"],
-                "mag_x": mag["x"],
-                "mag_y": mag["y"],
-                "mag_z": mag["z"],
             }
 
             self.window.append(sample)

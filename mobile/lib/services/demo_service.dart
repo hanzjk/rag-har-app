@@ -144,11 +144,6 @@ class DemoService {
         'y': gyroY,
         'z': gyroZ,
       },
-      'magnetometer': {
-        'x': 20.0 + _random.nextDouble() * 2.0,
-        'y': -15.0 + _random.nextDouble() * 2.0,
-        'z': 40.0 + _random.nextDouble() * 2.0,
-      },
     };
   }
 

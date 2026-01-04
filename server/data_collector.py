@@ -68,7 +68,6 @@ class DataCollector:
                     'timestamp',
                     'accel_x', 'accel_y', 'accel_z',
                     'gyro_x', 'gyro_y', 'gyro_z',
-                    'mag_x', 'mag_y', 'mag_z',
                     'activity'
                 ]
                 self.csv_writers[activity] = csv.DictWriter(
@@ -84,7 +83,6 @@ class DataCollector:
             # Extract sensor values
             accel = sensor_data['data']['accelerometer']
             gyro = sensor_data['data']['gyroscope']
-            mag = sensor_data['data']['magnetometer']
 
             # Write row
             row = {
@@ -95,9 +93,6 @@ class DataCollector:
                 'gyro_x': gyro['x'],
                 'gyro_y': gyro['y'],
                 'gyro_z': gyro['z'],
-                'mag_x': mag['x'],
-                'mag_y': mag['y'],
-                'mag_z': mag['z'],
                 'activity': activity
             }
 

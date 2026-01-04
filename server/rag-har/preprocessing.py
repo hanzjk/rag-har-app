@@ -296,7 +296,7 @@ def preprocess() -> str:
     logger.info("HAR DEMO PREPROCESSING")
     logger.info("="*60)
     logger.info("Dataset: Clean mobile sensor data")
-    logger.info("Sensors: Accelerometer, Gyroscope, Magnetometer (50Hz)")
+    logger.info("Sensors: Accelerometer, Gyroscope (50Hz)")
     logger.info("Normalization: None (raw sensor values preserved)")
     logger.info(f"Window size: {WINDOW_SIZE} samples (4 seconds)")
     logger.info(f"Overlap: 50% ({STEP_SIZE} sample step)")
