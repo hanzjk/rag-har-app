@@ -1,41 +1,39 @@
-# WebSocket Server for Activity Recognition
+# WebSocket Server for RAG-Based Activity Recognition
 
-Python WebSocket server that receives sensor data from the Flutter app and either:
-1. **Collects data** for dataset creation (data collection mode)
-2. **Sends activity predictions** in real-time (activity recognition mode)
+Python WebSocket server for Human Activity Recognition (HAR) with two modes:
+1. **Data Collection** - Saves labeled sensor data to CSV files
+2. **Activity Prediction** - Real-time classification using RAG (Retrieval-Augmented Generation)
 
 ## Features
 
-- **Dual Mode Operation:**
-  - **Collect Mode**: Save labeled sensor data to CSV files for dataset creation
-  - **Predict Mode**: Real-time activity classification and predictions
-- Receives sensor data (accelerometer, gyroscope, magnetometer) from Flutter app
-- Simple rule-based activity classification:
-  - Walking
-  - Running
-  - Sitting
-  - Standing
-- CSV export organized by activity label
-- Connection logging and monitoring
+- **Dual-mode operation:** Collect labeled data or predict activities in real-time
+- **RAG-based classification:** Uses LLM with hybrid vector search (Milvus + OpenAI)
+- **Automatic pipeline:** Preprocessing → Feature extraction → Vector indexing
+- **Session-based tracking:** Incremental updates, no duplicate processing
+- **Supported activities:** Walking, running, sitting, standing, jumping, lying
 
 ## Architecture
 
-The server is now modular with separate components:
-
-- **`websocket_server.py`**: Main server that handles WebSocket connections and routes requests
-- **`data_collector.py`**: Handles data collection and CSV file management
-- **`activity_predictor.py`**: Handles activity prediction (rule-based or ML model)
-
-This modular design makes it easy to:
-- Swap between different prediction algorithms
-- Extend data collection formats
-- Integrate custom ML models
+```
+server/
+├── websocket_server.py       # WebSocket server (handles connections)
+├── data_collector.py          # Saves sensor data to CSV
+├── activity_predictor.py      # Real-time prediction wrapper
+└── rag-har/                   # RAG-HAR pipeline
+    ├── rag_pipeline.py        # Pipeline orchestrator
+    ├── preprocessing.py       # Windowing & train/test split
+    ├── features.py            # Statistical feature extraction
+    ├── timeseries_indexing.py # Vector database indexing
+    └── classifier.py          # RAG classifier & evaluation
+```
 
 ## Setup
 
 ### Requirements
 
-- Python 3.8 or higher
+- Python 3.8+
+- OpenAI API key
+- Milvus/Zilliz Cloud account
 
 ### Installation
 
@@ -44,146 +42,55 @@ This modular design makes it easy to:
 pip install -r requirements.txt
 ```
 
-Or using a virtual environment (recommended):
+2. Create `.env` file:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+OPENAI_API_KEY=your_openai_api_key
+ZILLIZ_CLOUD_URI=your_milvus_uri
+ZILLIZ_CLOUD_API_KEY=your_milvus_api_key
 ```
 
 ## Running the Server
 
-### Mode 1: Data Collection (for creating datasets)
-
-Use this mode to collect labeled sensor data from the mobile app:
-
+Start the WebSocket server:
 ```bash
 python websocket_server.py
 ```
 
-Options:
-- `--mode collect`: Enable data collection mode
-- `--data-dir <directory>`: Specify where to save CSV files (default: `collected_data/`)
+The server starts on `ws://0.0.0.0:8000` and handles both data collection and prediction.
 
-Example:
-```bash
-python websocket_server.py --data-dir my_dataset
-```
+### Connect from Mobile App
 
-**What happens:**
-- Creates CSV files organized by activity label (e.g., `walking.csv`, `running.csv`)
-- Each CSV contains: timestamp, accel_x/y/z, gyro_x/y/z, mag_x/y/z, activity
-- Data is saved in real-time as it arrives from the mobile app
-- Perfect for creating training datasets for ML models
+1. Find your local IP: `ifconfig | grep "inet "` (macOS/Linux) or `ipconfig` (Windows)
+2. In the Flutter app → Settings → Set WebSocket URL to: `ws://YOUR_IP:8000/ws`
+3. Example: `ws://192.168.1.100:8000/ws`
 
-### Mode 2: Activity Recognition (default)
+## Workflow
 
-Use this mode to send real-time activity predictions to the mobile app:
+### 1. Collect Data
 
-```bash
-python websocket_server.py --mode predict
-```
+Mobile app sends `collect_data` messages → Server saves to `collected_data/subject0_TIMESTAMP/activity.csv`
 
-or simply:
-```bash
-python websocket_server.py
-```
+When collection stops, the RAG-HAR pipeline runs automatically:
+- **Preprocessing**: Segments data into 200-sample windows (4s at 50Hz), 50% overlap
+- **Feature Extraction**: Computes statistical features (mean, std, min, max, etc.) for temporal segments
+- **Indexing**: Creates embeddings and stores in Milvus vector database
 
-**What happens:**
-- Receives sensor data from mobile app
-- Performs activity classification (currently rule-based)
-- Sends predictions back to the app in real-time
+### 2. Predict Activity
 
-The server will start on `ws://0.0.0.0:8000` and listen for connections.
-
-## Testing with the Flutter App
-
-1. **Find your local IP address:**
-   - macOS/Linux: `ifconfig | grep "inet "` or `ip addr show`
-   - Windows: `ipconfig`
-   - Look for your local IP (usually starts with 192.168.x.x or 10.x.x.x)
-
-2. **Update Flutter app settings:**
-   - Open the app → Settings
-   - Set WebSocket URL to: `ws://YOUR_LOCAL_IP:8000/ws`
-   - Example: `ws://192.168.1.100:8000/ws`
-
-3. **Test the connection:**
-   - Enable Demo Mode in app settings for easier testing
-   - Go to Data Collection or Activity Recognition
-   - Tap Start
-   - Watch the server logs for incoming data and predictions
-
-## Activity Prediction Logic
-
-The server uses a **sliding window approach** for temporal pattern recognition:
-
-### Sliding Window (2 seconds = 40 samples at 20Hz)
-
-Instead of analyzing single sensor readings, the server:
-1. **Buffers** the most recent 40 samples (2 seconds)
-2. **Extracts features** (mean, std, min, max) from the window
-3. **Detects patterns** like walking gait cycles, running impacts
-4. **Predicts activity** based on temporal features
-
-**Why windowing?**
-- ✅ **Robust to noise:** Averages out outliers
-- ✅ **Detects patterns:** Sees periodic movements over time
-- ✅ **Higher accuracy:** 80-90% vs 60-70% (single sample)
-- ✅ **ML-ready:** Rich feature set for training models
-
-### Rule-Based Classification (Current)
-
-Uses statistical features from the sliding window:
-
-| Activity | Accel Mean | Accel Std | Gyro Mean | Pattern |
-|----------|------------|-----------|-----------|---------|
-| Running  | > 14 m/s²  | > 2.0     | > 0.3 rad/s | High variation |
-| Walking  | > 10.5 m/s²| > 0.8     | > 0.15 rad/s | Periodic |
-| Sitting  | < 10.5 m/s²| < 0.3     | < 0.05 rad/s | Constant |
-| Standing | < 11 m/s² | < 0.5     | < 0.1 rad/s | Nearly constant |
-
-**See `SLIDING_WINDOW.md` for detailed explanation.**
-
-**Note:** For production, replace with a trained ML model using the same windowed features for 90-95% accuracy.
-
-## Data Collection Workflow
-
-To create a dataset for training ML models:
-
-1. **Start server in collect mode:**
-   ```bash
-   python websocket_server.py --mode collect
-   ```
-
-2. **Configure mobile app:**
-   - Set WebSocket URL to your server's IP
-   - Enable Demo Mode (or use real sensors)
-   - Go to Data Collection mode
-
-3. **Collect data for each activity:**
-   - For "walking": Perform walking activity for 2-3 minutes
-   - For "running": Perform running activity for 2-3 minutes
-   - For "sitting": Sit still for 2-3 minutes
-   - For "standing": Stand still for 2-3 minutes
-
-4. **Find your dataset:**
-   - CSV files will be in `collected_data/` directory
-   - One file per activity: `walking.csv`, `running.csv`, etc.
-
-5. **Use the dataset:**
-   - Import CSV into pandas, scikit-learn, TensorFlow, etc.
-   - Train your ML model
-   - Replace the rule-based `predict_activity()` function with your model
+Mobile app sends `predict_activity` messages → Server uses RAG classifier:
+- Extracts features from sensor window
+- Performs hybrid search in Milvus (retrieves 15 similar samples per temporal segment)
+- LLM classifies activity based on retrieved context
 
 ## Message Format
 
-### Client → Server (Sensor Data)
+### Client → Server (Data Collection)
 ```json
 {
-  "type": "sensor_data",
-  "timestamp": "2025-12-26T10:30:45.123Z",
+  "type": "collect_data",
+  "timestamp": "2026-01-04T10:30:45.123Z",
   "activity": "walking",
+  "subject_id": "subject0",
   "data": {
     "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
     "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0},
@@ -192,144 +99,82 @@ To create a dataset for training ML models:
 }
 ```
 
-**Note:** The `activity` field is optional and only used in collect mode for labeling data.
+### Client → Server (Prediction)
+```json
+{
+  "type": "predict_activity",
+  "timestamp": "2026-01-04T10:30:45.123Z",
+  "data": {
+    "accelerometer": {"x": 0.123, "y": 9.81, "z": 0.045},
+    "gyroscope": {"x": 0.001, "y": -0.002, "z": 0.0},
+    "magnetometer": {"x": 23.4, "y": -12.1, "z": 45.6}
+  }
+}
+```
 
-### Server → Client (Activity Prediction)
-Used in predict mode:
+### Server → Client (Prediction Response)
 ```json
 {
   "type": "activity_prediction",
   "activity": "walking",
-  "confidence": 0.85,
-  "timestamp": "2025-12-26T10:30:45.678Z"
+  "timestamp": "2026-01-04T10:30:45.678Z"
 }
 ```
 
-### Server → Client (Collection Acknowledgment)
-Used in collect mode:
-```json
-{
-  "type": "collection_ack",
-  "samples_collected": 142,
-  "activity": "walking",
-  "timestamp": "2025-12-26T10:30:45.678Z"
-}
-```
+## Running Pipeline Manually
 
-## Logging
-
-The server logs:
-- Client connections/disconnections
-- Activity predictions sent
-- Errors and warnings
-
-Adjust logging level in `websocket_server.py`:
-```python
-logging.basicConfig(level=logging.DEBUG)  # For more detailed logs
-```
-
-## Using ML Models
-
-The server now supports loading custom ML models! Here's how:
-
-### Training Your Model
-
-1. Collect data using collect mode
-2. Train your model using the CSV files
-3. Save your trained model (e.g., `.pkl`, `.h5`, `.pt`)
-
-### Running with ML Model
-
+Process collected data:
 ```bash
-python websocket_server.py --mode predict --model path/to/your/model.pkl
+cd rag-har
+python rag_pipeline.py
 ```
 
-### Implementing Model Loading
-
-Edit `activity_predictor.py` to load your specific model type:
-
-**For scikit-learn models:**
-```python
-def _load_model(self, model_path: str):
-    import pickle
-    with open(model_path, 'rb') as f:
-        self.model = pickle.load(f)
-    logger.info(f"Loaded scikit-learn model from {model_path}")
+Evaluate classifier on test set:
+```bash
+cd rag-har
+python classifier.py
 ```
 
-**For TensorFlow/Keras models:**
-```python
-def _load_model(self, model_path: str):
-    from tensorflow import keras
-    self.model = keras.models.load_model(model_path)
-    logger.info(f"Loaded TensorFlow model from {model_path}")
+Results saved to `output/har_demo/test_evaluation_results.json`
+
+## Data Organization
+
 ```
+collected_data/
+└── subject0_20260104_153045/    # Session folder
+    ├── walking.csv
+    ├── sitting.csv
+    └── running.csv
 
-**For PyTorch models:**
-```python
-def _load_model(self, model_path: str):
-    import torch
-    self.model = torch.load(model_path)
-    self.model.eval()
-    logger.info(f"Loaded PyTorch model from {model_path}")
-```
-
-### Implementing Feature Extraction
-
-Update `_extract_features()` in `activity_predictor.py`:
-
-```python
-def _extract_features(self, sensor_data: dict) -> list:
-    accel = sensor_data['data']['accelerometer']
-    gyro = sensor_data['data']['gyroscope']
-    mag = sensor_data['data']['magnetometer']
-
-    # Example features
-    features = [
-        accel['x'], accel['y'], accel['z'],
-        gyro['x'], gyro['y'], gyro['z'],
-        mag['x'], mag['y'], mag['z'],
-        # Add magnitude features
-        (accel['x']**2 + accel['y']**2 + accel['z']**2)**0.5,
-        (gyro['x']**2 + gyro['y']**2 + gyro['z']**2)**0.5,
-        # Add more features as needed
-    ]
-    return features
-```
-
-### Implementing Model Prediction
-
-Update `_predict_with_model()` in `activity_predictor.py`:
-
-```python
-def _predict_with_model(self, sensor_data: dict) -> Dict[str, Any]:
-    features = self._extract_features(sensor_data)
-
-    # For scikit-learn
-    prediction = self.model.predict([features])[0]
-    confidence = self.model.predict_proba([features]).max()
-
-    return {
-        "type": "activity_prediction",
-        "activity": prediction,
-        "confidence": float(confidence),
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }
+output/har_demo/
+├── train-test-splits/
+│   ├── train/
+│   │   └── subject0_20260104_153045/
+│   │       └── walking/
+│   │           └── subject0_20260104_153045_window_0_walking.csv
+│   └── test/
+├── features/
+│   ├── train/descriptions/
+│   │   └── subject0_20260104_153045/
+│   │       └── subject0_20260104_153045_window_0_activity_walking_stats.txt
+│   └── test/descriptions/
+├── processed_sessions.txt                     # Tracks preprocessing
+├── processed_features_sessions_train.txt      # Tracks feature extraction (train)
+├── processed_features_sessions_test.txt       # Tracks feature extraction (test)
+└── processed_indexing_sessions.txt            # Tracks vector indexing
 ```
 
 ## Troubleshooting
 
 **Connection refused:**
-- Make sure the server is running
+- Check server is running
+- Verify IP address and port
 - Check firewall settings
-- Verify the IP address and port
+
+**RAG classifier fails to initialize:**
+- Verify `.env` file exists with correct API keys
+- Check OpenAI and Milvus credentials
 
 **No predictions received:**
 - Check server logs for errors
-- Verify the message format matches expected JSON structure
-- Ensure sensor data is being sent from the app
-
-**WebSocket closes immediately:**
-- Check for exceptions in server logs
-- Verify Python version (3.8+)
-- Ensure websockets library is installed
+- Ensure sensor data format matches expected JSON structure

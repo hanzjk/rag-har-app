@@ -14,12 +14,31 @@ logger = logging.getLogger(__name__)
 class DataCollector:
     """Handles data collection and storage for dataset creation"""
 
-    def __init__(self, data_dir: str = 'collected_data'):
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(exist_ok=True)
+    def __init__(self, data_dir: str = 'collected_data', subject_id: str = None):
+        """
+        Initialize data collector with subject-specific folder.
+
+        Args:
+            data_dir: Base directory for collected data
+            subject_id: Subject identifier (defaults to 'subject0')
+        """
+        if subject_id is None:
+            subject_id = 'subject0'
+
+        # Create timestamped subject folder
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        subject_folder_name = f"{subject_id}_{timestamp}"
+
+        self.data_dir = Path(data_dir) / subject_folder_name
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+
+        self.subject_id = subject_id
+        self.subject_folder_name = subject_folder_name
         self.csv_files = {}
         self.csv_writers = {}
-        logger.info(f"Data collector initialized. Data directory: {self.data_dir}")
+
+        logger.info(f"Data collector initialized for subject: {subject_folder_name}")
+        logger.info(f"Data directory: {self.data_dir}")
 
     def save_sensor_data(self, sensor_data: dict, activity_label: str = None) -> bool:
         """
@@ -100,13 +119,24 @@ class DataCollector:
         stats = {
             'activities': list(self.csv_files.keys()),
             'total_activities': len(self.csv_files),
-            'data_dir': str(self.data_dir)
+            'data_dir': str(self.data_dir),
+            'subject_id': self.subject_id,
+            'subject_folder': self.subject_folder_name
         }
         return stats
+
+    def get_subject_folder_name(self) -> str:
+        """
+        Get the subject folder name.
+
+        Returns:
+            str: Subject folder name (e.g., 'subject0_20260104_153045')
+        """
+        return self.subject_folder_name
 
     def close_all(self):
         """Close all open CSV files"""
         for activity, file in self.csv_files.items():
             file.close()
             logger.info(f"Closed CSV file for activity: {activity}")
-        logger.info("All CSV files closed")
+        logger.info(f"All CSV files closed for subject: {self.subject_folder_name}")

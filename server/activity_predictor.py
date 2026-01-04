@@ -23,17 +23,17 @@ class ActivityPredictor:
         self,
         classifier=None,
         window_size: int = 200,
-        min_samples: int = 100,
-        step_size: int = 50,
+        min_samples: int = 200,
+        step_size: int = 200,
     ):
         """
-        Initialize the activity predictor with sliding window.
+        Initialize the activity predictor with non-overlapping windows.
 
         Args:
             classifier: RAGActivityClassifier instance (optional, for real predictions)
             window_size: Number of samples in the sliding window (default: 200 = 4 seconds at 50Hz)
-            min_samples: Minimum samples needed before making predictions (default: 100 = 2 seconds)
-            step_size: Number of samples between predictions (default: 50 = 1 second, 75% overlap)
+            min_samples: Minimum samples needed before making predictions (default: 200 = 4 seconds, same as window)
+            step_size: Number of samples between predictions (default: 200 = 4 seconds, non-overlapping windows)
         """
         self.classifier = classifier
         self.window_size = window_size
@@ -70,6 +70,9 @@ class ActivityPredictor:
         # Add new sample to sliding window
         self._add_to_window(sensor_data)
 
+        # Increment counter first
+        self.samples_since_last_prediction += 1
+
         # Only make prediction every step_size samples
         if self.samples_since_last_prediction >= self.step_size:
             logger.info(
@@ -79,7 +82,6 @@ class ActivityPredictor:
             self.samples_since_last_prediction = 0  # Reset counter
             return self._predict_from_window()
         else:
-            self.samples_since_last_prediction += 1
             logger.debug(
                 f"Buffering sample {self.samples_since_last_prediction}/{self.step_size}. "
                 f"Window: {len(self.window)}/{self.window_size}"
@@ -142,6 +144,7 @@ class ActivityPredictor:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "window_size": len(self.window),
                 "status": "buffering",
+                "window_data": list(self.window),  # Include partial window
             }
 
         # Use RAG classifier (required)
@@ -162,7 +165,7 @@ class ActivityPredictor:
         Predict activity using RAG-based classifier.
 
         Returns:
-            dict: Prediction with activity, confidence, and timestamp
+            dict: Prediction with activity, confidence, timestamp, and window data
         """
         try:
             # Convert window deque to list of dicts for classifier
@@ -180,6 +183,7 @@ class ActivityPredictor:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "window_size": len(self.window),
                 "method": "rag_classifier",
+                "window_data": window_data,  # Include window for logging
             }
 
         except Exception as e:
@@ -189,6 +193,7 @@ class ActivityPredictor:
                 "activity": "unknown",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "error": str(e),
+                "window_data": list(self.window),  # Include window even on error
             }
 
     def reset_window(self):

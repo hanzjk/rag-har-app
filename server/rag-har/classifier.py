@@ -69,7 +69,7 @@ class RAGActivityClassifier:
 
     def __init__(
         self,
-        model: str = "gpt-5-mini",
+        model: str = "gpt-4o-mini",
         fewshot: int = 30,
         out_fewshot: int = 20,
     ):
@@ -84,9 +84,16 @@ class RAGActivityClassifier:
         # Hardcoded configuration for har_demo dataset
         self.dataset_name = "har_demo"
         self.collection_name = "har_demo_collection"
-        self.valid_labels = ["walking", "running", "sitting", "standing", "walking_upstairs", "walking_downstairs"]
+        self.valid_labels = [
+            "walking",
+            "running",
+            "sitting",
+            "standing",
+            "jumping",
+            "lying",
+        ]
         self.statistics = ["mean", "std", "min", "max", "median", "p25", "p75"]
-        self.sensor_columns = ["accel", "gyro", "mag"]
+        self.sensor_columns = ["accel", "gyro"]
 
         self.model = model
         self.fewshot = fewshot
@@ -198,7 +205,6 @@ class RAGActivityClassifier:
         sensor_metadata = {
             "accel": ("Acceleration", "m/s²"),
             "gyro": ("Gyroscope", "rad/s"),
-            "mag": ("Magnetometer", "μT"),
         }
 
         # Segment name mapping
@@ -355,15 +361,7 @@ class RAGActivityClassifier:
         retrieved_data = "\n\n".join(sections)
         classes_str = str(self.valid_labels)
 
-        system_prompt = f"""You are a multi-class activity classifier using statistical summaries of tri-axis accelerometer, gyroscope, and magnetometer sensors.
-
-INSTRUCTIONS:
-1. Classify the CANDIDATE into exactly ONE class from CLASSES
-2. Use the retrieved samples as REFERENCE PATTERNS of similar classes.
-
-CLASSES = {classes_str}
-
-"""
+        system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str} and nothing else."""
         series = (
             f"[Whole Segment]:\n{whole_stats}\n"
             f"[Start Segment]:\n{start_stats}\n"
@@ -371,7 +369,7 @@ CLASSES = {classes_str}
             f"[End Segment]:\n{end_stats}\n"
         )
 
-        user_prompt = f"""\n--- CANDIDATE ---\n{series}\n\n--- LABELED SAMPLES ---\n{retrieved_data}\n"""
+        user_prompt = f"""\n You are given summary statistics for sensor data across temporal segments for labeled samples and one unlabeled candidate.\n\n--- CANDIDATE ---\n{series}\n\n--- LABELED SAMPLES ---\n{retrieved_data}\n"""
 
         # Call LLM with retry logic
         logger.info(
@@ -433,7 +431,7 @@ CLASSES = {classes_str}
 
         Args:
             window_data: List of sensor reading dicts with keys:
-                        accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z, mag_x, mag_y, mag_z
+                        accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z
 
         Returns:
             Dict with 'activity' (predicted label) and 'confidence' (float)
@@ -458,3 +456,216 @@ CLASSES = {classes_str}
         except Exception as e:
             logger.error(f"Error in predict_from_window: {e}", exc_info=True)
             return {"activity": "unknown"}
+
+    def evaluate_on_test_set(self) -> Dict[str, Any]:
+        """
+        Evaluate classifier on all test set description files.
+        Processes all files in features/test/descriptions/ session folders.
+
+        Returns:
+            Dict with accuracy, confusion matrix, and detailed results
+        """
+        from pathlib import Path
+        from tqdm import tqdm
+
+        # Auto-generate paths
+        base_path = Path(__file__).parent.parent
+        test_descriptions_dir = base_path / "output" / self.dataset_name / "features" / "test" / "descriptions"
+        test_windows_dir = base_path / "output" / self.dataset_name / "train-test-splits" / "test"
+
+        logger.info("=" * 80)
+        logger.info("EVALUATING CLASSIFIER ON TEST SET")
+        logger.info("=" * 80)
+        logger.info(f"Test descriptions: {test_descriptions_dir}")
+        logger.info(f"Test windows: {test_windows_dir}")
+        logger.info("")
+
+        if not test_descriptions_dir.exists():
+            logger.error(f"Test descriptions directory not found: {test_descriptions_dir}")
+            return {"error": "Test descriptions directory not found"}
+
+        # Collect all test files from session folders
+        test_files = []
+        for session_dir in test_descriptions_dir.iterdir():
+            if not session_dir.is_dir():
+                continue
+
+            session_files = list(session_dir.glob("*.txt"))
+            test_files.extend(session_files)
+
+        if not test_files:
+            logger.error(f"No test description files found in {test_descriptions_dir}")
+            return {"error": "No test files found"}
+
+        logger.info(f"Found {len(test_files)} test samples to evaluate")
+        logger.info("")
+
+        # Process each test file
+        results = []
+        correct = 0
+        total = 0
+
+        for file_path in tqdm(test_files, desc="Evaluating test samples"):
+            try:
+                # Parse filename: session_id_window_0_activity_walking_stats.txt
+                base = file_path.name
+                m = re.match(r"(.+)_window_(\d+)_activity_([A-Za-z0-9_-]+)_stats\.txt", base)
+                if not m:
+                    logger.warning(f"Could not parse filename: {base}")
+                    continue
+
+                session_id, window_id, true_activity = m.groups()
+
+                # Find corresponding CSV window file
+                # Path: test/session_id/activity/session_id_window_0_activity.csv
+                csv_file = test_windows_dir / session_id / true_activity / f"{session_id}_window_{window_id}_{true_activity}.csv"
+
+                if not csv_file.exists():
+                    logger.warning(f"CSV file not found: {csv_file}")
+                    continue
+
+                # Load window data
+                df = pd.read_csv(csv_file)
+
+                # Classify
+                result = self.classify_dataframe(df)
+                prediction = result["prediction"]
+
+                # Check if correct
+                is_correct = prediction.lower() == true_activity.lower()
+                if is_correct:
+                    correct += 1
+                total += 1
+
+                results.append({
+                    "session_id": session_id,
+                    "window_id": window_id,
+                    "true_label": true_activity,
+                    "prediction": prediction,
+                    "correct": is_correct,
+                    "retrieved_labels": result.get("retrieved_labels", []),
+                    "num_retrieved": result.get("num_retrieved", 0)
+                })
+
+                logger.info(
+                    f"Sample {total}: True={true_activity}, Pred={prediction}, "
+                    f"Correct={is_correct}, Retrieved={result.get('num_retrieved', 0)} samples"
+                )
+
+            except Exception as e:
+                logger.error(f"Error processing file {file_path}: {e}")
+                continue
+
+        # Calculate metrics
+        accuracy = correct / total if total > 0 else 0.0
+
+        # Confusion matrix
+        confusion_matrix = {}
+        for r in results:
+            true = r["true_label"]
+            pred = r["prediction"]
+            key = f"{true} -> {pred}"
+            confusion_matrix[key] = confusion_matrix.get(key, 0) + 1
+
+        # Per-class accuracy
+        per_class_accuracy = {}
+        for label in self.valid_labels:
+            class_results = [r for r in results if r["true_label"] == label]
+            if class_results:
+                class_correct = sum(1 for r in class_results if r["correct"])
+                per_class_accuracy[label] = class_correct / len(class_results)
+
+        # Final report
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("TEST SET EVALUATION RESULTS")
+        logger.info("=" * 80)
+        logger.info(f"Total samples: {total}")
+        logger.info(f"Correct: {correct}")
+        logger.info(f"Accuracy: {accuracy:.2%}")
+        logger.info("")
+        logger.info("Per-class accuracy:")
+        for label, acc in sorted(per_class_accuracy.items()):
+            logger.info(f"  {label}: {acc:.2%}")
+        logger.info("")
+        logger.info("Confusion matrix (true -> predicted):")
+        for key, count in sorted(confusion_matrix.items()):
+            logger.info(f"  {key}: {count}")
+        logger.info("=" * 80)
+
+        return {
+            "accuracy": accuracy,
+            "total_samples": total,
+            "correct_samples": correct,
+            "per_class_accuracy": per_class_accuracy,
+            "confusion_matrix": confusion_matrix,
+            "detailed_results": results
+        }
+
+
+def main():
+    """
+    Main function to run classifier evaluation on test set.
+    """
+    import logging
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    print("=" * 80)
+    print("RAG-BASED ACTIVITY CLASSIFIER - TEST SET EVALUATION")
+    print("=" * 80)
+    print("")
+
+    # Initialize classifier
+    print("Initializing RAG classifier...")
+    classifier = RAGActivityClassifier(
+        model="gpt-5-mini",
+        fewshot=15,
+        out_fewshot=10,
+    )
+    print("")
+
+    # Run evaluation
+    print("Starting test set evaluation...")
+    print("")
+    results = classifier.evaluate_on_test_set()
+
+    # Save results to file
+    if "error" not in results:
+        from pathlib import Path
+        import json
+
+        output_dir = Path(__file__).parent.parent / "output" / "har_demo"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        results_file = output_dir / "test_evaluation_results.json"
+
+        # Convert detailed results to serializable format
+        serializable_results = {
+            "accuracy": results["accuracy"],
+            "total_samples": results["total_samples"],
+            "correct_samples": results["correct_samples"],
+            "per_class_accuracy": results["per_class_accuracy"],
+            "confusion_matrix": results["confusion_matrix"],
+        }
+
+        with open(results_file, 'w') as f:
+            json.dump(serializable_results, f, indent=2)
+
+        print("")
+        print(f"Results saved to: {results_file}")
+        print("")
+        print("=" * 80)
+        print("EVALUATION COMPLETE")
+        print("=" * 80)
+    else:
+        print(f"Error: {results['error']}")
+
+
+if __name__ == "__main__":
+    main()

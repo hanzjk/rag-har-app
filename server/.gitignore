@@ -49,3 +49,7 @@ env/
 data/
 
 .env
+
+output/
+collected_data/
+test_data/
