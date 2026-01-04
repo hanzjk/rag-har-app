@@ -14,10 +14,12 @@ enum ConnectionState {
 class ActivityPrediction {
   final ActivityType activity;
   final DateTime timestamp;
+  final String? reasoning;
 
   ActivityPrediction({
     required this.activity,
     required this.timestamp,
+    this.reasoning,
   });
 }
 
@@ -27,12 +29,15 @@ class WebSocketService {
       StreamController<ActivityPrediction>.broadcast();
   final StreamController<ConnectionState> _connectionStateController =
       StreamController<ConnectionState>.broadcast();
+  final StreamController<String> _messageController =
+      StreamController<String>.broadcast();
 
   ConnectionState _connectionState = ConnectionState.disconnected;
 
   Stream<ActivityPrediction> get activityStream => _activityController.stream;
   Stream<ConnectionState> get connectionStateStream =>
       _connectionStateController.stream;
+  Stream<String> get messageStream => _messageController.stream;
   ConnectionState get connectionState => _connectionState;
 
   Future<void> connect(String url) async {
@@ -89,11 +94,30 @@ class WebSocketService {
     }
   }
 
+  void sendStopCollection() {
+    if (_connectionState == ConnectionState.connected && _channel != null) {
+      try {
+        final stopMessage = jsonEncode({
+          'type': 'stop_collection',
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+        _channel!.sink.add(stopMessage);
+        print('WebSocketService: Sent stop_collection signal');
+      } catch (e) {
+        print('WebSocketService: Error sending stop_collection: $e');
+      }
+    }
+  }
+
   void _handleIncomingMessage(dynamic message) {
     try {
+      // Emit raw message to stream
+      _messageController.add(message.toString());
+
       final data = jsonDecode(message.toString());
 
       String? activity;
+      String? reasoning;
 
       if (data['type'] == 'activity_prediction') {
         // Skip buffering/initializing predictions
@@ -106,8 +130,10 @@ class WebSocketService {
         }
 
         activity = activityName;
+        reasoning = data['reasoning'];  // Extract reasoning if present
       } else if (data.containsKey('prediction')) {
         activity = data['prediction'];
+        reasoning = data['reasoning'];  // Extract reasoning if present
       }
 
       if (activity != null) {
@@ -115,6 +141,7 @@ class WebSocketService {
           ActivityPrediction(
             activity: ActivityType.fromString(activity),
             timestamp: DateTime.now(),
+            reasoning: reasoning,
           ),
         );
       }
@@ -138,5 +165,6 @@ class WebSocketService {
     disconnect();
     _activityController.close();
     _connectionStateController.close();
+    _messageController.close();
   }
 }

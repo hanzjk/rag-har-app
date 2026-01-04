@@ -47,6 +47,9 @@ pip install -r requirements.txt
 OPENAI_API_KEY=your_openai_api_key
 ZILLIZ_CLOUD_URI=your_milvus_uri
 ZILLIZ_CLOUD_API_KEY=your_milvus_api_key
+
+# Optional: Save prediction windows for debugging (default: false)
+SAVE_PREDICTION_WINDOWS=false
 ```
 
 ## Running the Server
@@ -163,6 +166,34 @@ output/har_demo/
 ├── processed_features_sessions_test.txt       # Tracks feature extraction (test)
 └── processed_indexing_sessions.txt            # Tracks vector indexing
 ```
+
+## Debugging Predictions
+
+To save prediction windows for analysis, set the environment variable:
+
+```bash
+export SAVE_PREDICTION_WINDOWS=true
+python websocket_server.py
+```
+
+This saves each prediction window to `collected_data_predict_mode/session_TIMESTAMP/`:
+
+```
+collected_data_predict_mode/
+└── session_20260104_153045/
+    ├── 20260104_153045_123_window_0000_walking.csv
+    ├── 20260104_153045_456_window_0001_running.csv
+    └── 20260104_153045_789_window_0002_sitting.csv
+```
+
+Each CSV contains the 200 sensor samples that were sent to the classifier.
+
+**Use cases:**
+- Debug misclassifications by inspecting the raw window data
+- Verify sensor data quality during predictions
+- Analyze temporal patterns the classifier sees
+
+**Note:** Disable for production to save disk space.
 
 ## Troubleshooting
 

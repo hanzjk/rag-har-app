@@ -7,6 +7,7 @@ class SensorData {
   final SensorReading magnetometer;
   final String? activityLabel;
   final String messageType;
+  final String? subjectId;
 
   SensorData({
     required this.timestamp,
@@ -15,6 +16,7 @@ class SensorData {
     required this.magnetometer,
     this.activityLabel,
     this.messageType = 'sensor_data',
+    this.subjectId = 'subject0',
   });
 
   factory SensorData.fromSensorEvents({
@@ -55,6 +57,10 @@ class SensorData {
 
     if (activityLabel != null) {
       json['activity'] = activityLabel!;
+    }
+
+    if (subjectId != null) {
+      json['subject_id'] = subjectId!;
     }
 
     return json;

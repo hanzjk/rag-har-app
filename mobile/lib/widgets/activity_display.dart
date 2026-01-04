@@ -5,12 +5,14 @@ class ActivityDisplay extends StatefulWidget {
   final ActivityType activity;
   final bool isBuffering;
   final DateTime? lastUpdated;
+  final String? reasoning;
 
   const ActivityDisplay({
     super.key,
     required this.activity,
     this.isBuffering = false,
     this.lastUpdated,
+    this.reasoning,
   });
 
   @override
@@ -109,164 +111,186 @@ class _ActivityDisplayState extends State<ActivityDisplay>
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 4,
-      child: Container(
-        padding: const EdgeInsets.all(24.0),
-        width: double.infinity,
-        child: widget.isBuffering
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(
-                    width: 60,
-                    height: 60,
-                    child: CircularProgressIndicator(strokeWidth: 6),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'BUFFERING',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[700],
-                        ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Collecting sensor data...',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Please wait ~30 seconds',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[500],
-                          fontStyle: FontStyle.italic,
-                        ),
-                  ),
-                ],
-              )
-            : Stack(
-                children: [
-                  // Main content
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Add top spacing only when LIVE badge is present
-                        if (widget.activity != ActivityType.unknown)
-                          const SizedBox(height: 20),
-
-                        // Animated activity display
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 400),
-                        transitionBuilder: (child, animation) {
-                          return ScaleTransition(
-                            scale: animation,
-                            child: FadeTransition(
-                              opacity: animation,
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: ScaleTransition(
-                          key: ValueKey(widget.activity),
-                          scale: _pulseAnimation,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _getActivityIcon(widget.activity),
-                                size: 100,
-                                color: _getActivityColor(context, widget.activity),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                widget.activity.displayName.toUpperCase(),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .headlineMedium
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: _getActivityColor(
-                                          context, widget.activity),
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      // Last updated timestamp
-                      if (widget.lastUpdated != null) ...[
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.update,
-                              size: 16,
-                              color: Colors.grey[600],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _getTimeAgo(widget.lastUpdated),
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                    ),
-                  ),
-
-                  // Live indicator badge - top right, only for non-unknown activities
-                  if (widget.activity != ActivityType.unknown)
-                    Positioned(
-                      top: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            const Text(
-                              'LIVE',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.white, Color(0xFFF9FAFB)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Color(0xFFE5E7EB),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
+      padding: const EdgeInsets.all(24.0),
+      width: double.infinity,
+      child: widget.isBuffering
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 60,
+                  height: 60,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 6,
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'PROCESSING',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Analyzing activity...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFF9CA3AF),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This may take up to 30 seconds',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFFD1D5DB),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: _getActivityColor(context, widget.activity),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _getActivityColor(context, widget.activity).withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        _getActivityIcon(widget.activity),
+                        size: 32,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Current Activity',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF6B7280),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 400),
+                            child: Text(
+                              widget.activity.displayName,
+                              key: ValueKey(widget.activity),
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (widget.reasoning != null && widget.reasoning!.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Divider(color: Color(0xFFE5E7EB)),
+                  const SizedBox(height: 16),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.lightbulb_outline,
+                        size: 20,
+                        color: Color(0xFF8B5CF6),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Reasoning',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF6B7280),
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              widget.reasoning!,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF374151),
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (widget.lastUpdated != null) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 16,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _getTimeAgo(widget.lastUpdated),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
     );
   }
 }

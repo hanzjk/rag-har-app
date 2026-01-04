@@ -19,21 +19,39 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  // Create WebSocketService once and reuse it
-  late final WebSocketService _websocketService;
-  late final AppStateProvider _appStateProvider;
-  late final SensorService _sensorService;
+  // Create services once and reuse them
+  final WebSocketService _websocketService = WebSocketService();
+  final AppStateProvider _appStateProvider = AppStateProvider();
+  final SensorService _sensorService = SensorService();
+  late final ActivityProvider _activityProvider = ActivityProvider(websocketService: _websocketService);
 
   @override
   void initState() {
     super.initState();
-    _websocketService = WebSocketService();
-    _appStateProvider = AppStateProvider();
-    _sensorService = SensorService(); // Always use real sensors
+
+    // Listen for settings changes and start demo mode when ready
+    _appStateProvider.addListener(_checkAndStartDemoMode);
+
+    // Also check immediately after first frame in case settings are already loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndStartDemoMode();
+    });
+  }
+
+  void _checkAndStartDemoMode() {
+    if (_appStateProvider.demoModeEnabled &&
+        _appStateProvider.activityRecognitionEnabled &&
+        !_activityProvider.isListening) {
+      _activityProvider.startListening(demoMode: true);
+    } else if (!_appStateProvider.demoModeEnabled && _activityProvider.isListening) {
+      _activityProvider.stopListening();
+    }
   }
 
   @override
   void dispose() {
+    _appStateProvider.removeListener(_checkAndStartDemoMode);
+    _activityProvider.dispose();
     _websocketService.dispose();
     _appStateProvider.dispose();
     super.dispose();
@@ -50,17 +68,18 @@ class _MyAppState extends State<MyApp> {
             websocketService: _websocketService,
           ),
         ),
-        ChangeNotifierProvider(
-          create: (_) => ActivityProvider(
-            websocketService: _websocketService,
-          ),
-        ),
+        ChangeNotifierProvider.value(value: _activityProvider),
       ],
       child: MaterialApp(
-        title: 'Activity Recognition',
+        title: 'FitTrack',
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF2563EB),
+            primary: const Color(0xFF2563EB),
+            secondary: const Color(0xFF9333EA),
+          ),
           useMaterial3: true,
+          scaffoldBackgroundColor: const Color(0xFFF5F5F5),
         ),
         home: const HomeScreen(),
       ),

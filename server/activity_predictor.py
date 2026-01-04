@@ -180,6 +180,7 @@ class ActivityPredictor:
             return {
                 "type": "activity_prediction",
                 "activity": result["activity"],
+                "reasoning": result.get("reasoning"),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "window_size": len(self.window),
                 "method": "rag_classifier",

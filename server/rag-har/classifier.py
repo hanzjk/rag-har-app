@@ -31,6 +31,7 @@ class ActivityPrediction(BaseModel):
     """Structured output for activity classification."""
 
     activity_label: str
+    reasoning: str
 
 
 def extract_sensor_sections(text: str) -> Dict[str, str]:
@@ -361,7 +362,7 @@ class RAGActivityClassifier:
         retrieved_data = "\n\n".join(sections)
         classes_str = str(self.valid_labels)
 
-        system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str} and nothing else."""
+        system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str} and one sentence long reasoning."""
         series = (
             f"[Whole Segment]:\n{whole_stats}\n"
             f"[Start Segment]:\n{start_stats}\n"
@@ -388,8 +389,11 @@ class RAGActivityClassifier:
                     response_format=ActivityPrediction,
                 )
                 prediction = response.choices[0].message.parsed.activity_label
+                reasoning = response.choices[0].message.parsed.reasoning
                 success = True
-                logger.info(f"LLM response received: {prediction}")
+                logger.info(
+                    f"LLM response received: {prediction} with reasoning: {reasoning}"
+                )
             except openai.RateLimitError:
                 retry_count += 1
                 logger.warning(
@@ -416,6 +420,7 @@ class RAGActivityClassifier:
 
         result = {
             "prediction": prediction,
+            "reasoning": reasoning,
             "retrieved_labels": list(set(retrieved_labels)),
             "num_retrieved": len(retrieved_labels),
             "feature_description": content,
@@ -448,11 +453,11 @@ class RAGActivityClassifier:
 
             # Get prediction from result
             prediction = result["prediction"]
+            reasoning = result.get("reasoning")
 
-            logger.info(f"Final result: {prediction}")
+            logger.info(f"Final result: {prediction} with reasoning: {reasoning}")
 
-            return {"activity": prediction}
-
+            return {"activity": prediction, "reasoning": reasoning}
         except Exception as e:
             logger.error(f"Error in predict_from_window: {e}", exc_info=True)
             return {"activity": "unknown"}
@@ -470,8 +475,17 @@ class RAGActivityClassifier:
 
         # Auto-generate paths
         base_path = Path(__file__).parent.parent
-        test_descriptions_dir = base_path / "output" / self.dataset_name / "features" / "test" / "descriptions"
-        test_windows_dir = base_path / "output" / self.dataset_name / "train-test-splits" / "test"
+        test_descriptions_dir = (
+            base_path
+            / "output"
+            / self.dataset_name
+            / "features"
+            / "test"
+            / "descriptions"
+        )
+        test_windows_dir = (
+            base_path / "output" / self.dataset_name / "train-test-splits" / "test"
+        )
 
         logger.info("=" * 80)
         logger.info("EVALUATING CLASSIFIER ON TEST SET")
@@ -481,7 +495,9 @@ class RAGActivityClassifier:
         logger.info("")
 
         if not test_descriptions_dir.exists():
-            logger.error(f"Test descriptions directory not found: {test_descriptions_dir}")
+            logger.error(
+                f"Test descriptions directory not found: {test_descriptions_dir}"
+            )
             return {"error": "Test descriptions directory not found"}
 
         # Collect all test files from session folders
@@ -509,7 +525,9 @@ class RAGActivityClassifier:
             try:
                 # Parse filename: session_id_window_0_activity_walking_stats.txt
                 base = file_path.name
-                m = re.match(r"(.+)_window_(\d+)_activity_([A-Za-z0-9_-]+)_stats\.txt", base)
+                m = re.match(
+                    r"(.+)_window_(\d+)_activity_([A-Za-z0-9_-]+)_stats\.txt", base
+                )
                 if not m:
                     logger.warning(f"Could not parse filename: {base}")
                     continue
@@ -518,7 +536,12 @@ class RAGActivityClassifier:
 
                 # Find corresponding CSV window file
                 # Path: test/session_id/activity/session_id_window_0_activity.csv
-                csv_file = test_windows_dir / session_id / true_activity / f"{session_id}_window_{window_id}_{true_activity}.csv"
+                csv_file = (
+                    test_windows_dir
+                    / session_id
+                    / true_activity
+                    / f"{session_id}_window_{window_id}_{true_activity}.csv"
+                )
 
                 if not csv_file.exists():
                     logger.warning(f"CSV file not found: {csv_file}")
@@ -530,6 +553,7 @@ class RAGActivityClassifier:
                 # Classify
                 result = self.classify_dataframe(df)
                 prediction = result["prediction"]
+                reasoning = result.get("reasoning")
 
                 # Check if correct
                 is_correct = prediction.lower() == true_activity.lower()
@@ -537,18 +561,20 @@ class RAGActivityClassifier:
                     correct += 1
                 total += 1
 
-                results.append({
-                    "session_id": session_id,
-                    "window_id": window_id,
-                    "true_label": true_activity,
-                    "prediction": prediction,
-                    "correct": is_correct,
-                    "retrieved_labels": result.get("retrieved_labels", []),
-                    "num_retrieved": result.get("num_retrieved", 0)
-                })
+                results.append(
+                    {
+                        "session_id": session_id,
+                        "window_id": window_id,
+                        "true_label": true_activity,
+                        "prediction": prediction,
+                        "correct": is_correct,
+                        "retrieved_labels": result.get("retrieved_labels", []),
+                        "num_retrieved": result.get("num_retrieved", 0),
+                    }
+                )
 
                 logger.info(
-                    f"Sample {total}: True={true_activity}, Pred={prediction}, "
+                    f"Sample {total}: True={true_activity}, Pred={prediction}, Reasoning={reasoning} - "
                     f"Correct={is_correct}, Retrieved={result.get('num_retrieved', 0)} samples"
                 )
 
@@ -599,7 +625,7 @@ class RAGActivityClassifier:
             "correct_samples": correct,
             "per_class_accuracy": per_class_accuracy,
             "confusion_matrix": confusion_matrix,
-            "detailed_results": results
+            "detailed_results": results,
         }
 
 
@@ -654,7 +680,7 @@ def main():
             "confusion_matrix": results["confusion_matrix"],
         }
 
-        with open(results_file, 'w') as f:
+        with open(results_file, "w") as f:
             json.dump(serializable_results, f, indent=2)
 
         print("")
