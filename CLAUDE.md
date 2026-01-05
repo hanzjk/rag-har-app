@@ -153,7 +153,7 @@ flutter run
    - Extract features (temporal segments: whole, start, mid, end)
    - Generate embeddings (OpenAI text-embedding-3-small)
    - Hybrid search in Milvus (retrieve top 10 similar samples)
-   - LLM classification (GPT-4o-mini with retrieved context)
+   - LLM classification (GPT-5-mini with retrieved context)
 4. Server sends prediction with reasoning
 
 **Configuration:**

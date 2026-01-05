@@ -202,16 +202,19 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
           _demoCollectionStartTime = null;
         });
       } else {
-        // Send stop_collection signal to server before disconnecting
+        // IMPORTANT: Stop sensor collection FIRST to prevent sending data after stop signal
+        sensorDataProvider.stopCollection();
+        _demoDataTimer?.cancel();
+        _demoDataTimer = null;
+
+        // Send stop_collection signal to server
         _websocketService!.sendStopCollection();
 
         // Wait briefly for server to process the signal
         await Future.delayed(Duration(milliseconds: 500));
 
-        sensorDataProvider.stopCollection();
+        // Disconnect from server
         _websocketService!.disconnect();
-        _demoDataTimer?.cancel();
-        _demoDataTimer = null;
       }
     }
   }
@@ -805,9 +808,9 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
       xData = _gyroX;
       yData = _gyroY;
       zData = _gyroZ;
-      // Gyroscope range: smaller rotational values
-      minY = -0.5;
-      maxY = 0.5;
+      // Gyroscope range: use same scale as accelerometer for visual comparison
+      minY = -2.0;
+      maxY = 12.0;
     }
 
     // Convert to FlSpot format

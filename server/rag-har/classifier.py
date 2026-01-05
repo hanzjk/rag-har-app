@@ -70,7 +70,7 @@ class RAGActivityClassifier:
 
     def __init__(
         self,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-5-mini",
         fewshot: int = 30,
         out_fewshot: int = 20,
     ):

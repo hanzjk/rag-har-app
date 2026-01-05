@@ -39,13 +39,20 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _checkAndStartDemoMode() {
+    // Only manage demo mode here - don't interfere with real mode
     if (_appStateProvider.demoModeEnabled &&
         _appStateProvider.activityRecognitionEnabled &&
         !_activityProvider.isListening) {
+      print('🎮 main.dart: Starting demo mode predictions');
       _activityProvider.startListening(demoMode: true);
-    } else if (!_appStateProvider.demoModeEnabled && _activityProvider.isListening) {
+    } else if (_appStateProvider.demoModeEnabled &&
+        !_appStateProvider.activityRecognitionEnabled &&
+        _activityProvider.isListening) {
+      // Stop demo mode if activity recognition is disabled
+      print('🛑 main.dart: Stopping demo mode predictions');
       _activityProvider.stopListening();
     }
+    // Note: Real mode (non-demo) is managed by HomeTabScreen, not here
   }
 
   @override

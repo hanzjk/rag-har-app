@@ -70,7 +70,6 @@ class PredictionDataLogger:
                 'timestamp',
                 'accel_x', 'accel_y', 'accel_z',
                 'gyro_x', 'gyro_y', 'gyro_z',
-                'mag_x', 'mag_y', 'mag_z',
                 'predicted_activity'
             ]
 
@@ -89,9 +88,6 @@ class PredictionDataLogger:
                         'gyro_x': sample['gyro_x'],
                         'gyro_y': sample['gyro_y'],
                         'gyro_z': sample['gyro_z'],
-                        'mag_x': sample['mag_x'],
-                        'mag_y': sample['mag_y'],
-                        'mag_z': sample['mag_z'],
                         'predicted_activity': predicted_activity
                     }
                     writer.writerow(row)

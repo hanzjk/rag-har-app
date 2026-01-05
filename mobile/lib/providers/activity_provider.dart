@@ -24,6 +24,15 @@ class ActivityProvider extends ChangeNotifier {
       : _websocketService = websocketService;
 
   void startListening({bool demoMode = false}) {
+    print('🎬 ActivityProvider.startListening called (demoMode: $demoMode)');
+
+    // Stop any existing subscription first
+    if (_subscription != null) {
+      print('⚠️ ActivityProvider: Cancelling existing subscription before starting new one');
+      _subscription?.cancel();
+      _subscription = null;
+    }
+
     _isDemoMode = demoMode;
 
     // Clear previous history when starting new session
@@ -47,7 +56,9 @@ class ActivityProvider extends ChangeNotifier {
       });
     } else {
       // Use real websocket service
+      print('🎧 ActivityProvider: Starting to listen to activityStream...');
       _subscription = _websocketService.activityStream.listen((prediction) {
+        print('🎉 ActivityProvider: Received prediction - ${prediction.activity.displayName}');
         _currentActivity = prediction.activity;
 
         _activityHistory.insert(0, prediction);
@@ -56,12 +67,15 @@ class ActivityProvider extends ChangeNotifier {
           _activityHistory.removeLast();
         }
 
+        print('📢 ActivityProvider: Notifying listeners (activity: ${_currentActivity.displayName})');
         notifyListeners();
       });
+      print('✅ ActivityProvider: Subscription set up');
     }
   }
 
   void stopListening() {
+    print('🛑 ActivityProvider.stopListening called');
     _subscription?.cancel();
     _subscription = null;
 

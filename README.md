@@ -10,7 +10,7 @@ Flutter Mobile App
 Python Server (RAG-HAR Pipeline)
     ├─ Feature Extraction (temporal segmentation)
     ├─ Vector Search (Milvus/Zilliz)
-    └─ LLM Classification (GPT-4o-mini)
+    └─ LLM Classification (GPT-5-mini)
     ↓ WebSocket
 Mobile App (activity + reasoning)
 ```
@@ -206,7 +206,7 @@ ws://YOUR_LOCAL_IP:8000/ws
 1. **Feature Extraction**: Split 4-second window into temporal segments (whole, start 33%, mid 33%, end 33%)
 2. **Embedding**: Generate vector embeddings for each segment using OpenAI text-embedding-3-small
 3. **Retrieval**: Hybrid search in Milvus for top 10 similar training samples (15 per segment → weighted reranking)
-4. **Classification**: GPT-4o-mini analyzes retrieved examples and predicts activity with reasoning
+4. **Classification**: GPT-5-mini analyzes retrieved examples and predicts activity with reasoning
 
 **Why RAG?**
 - ✅ Human-readable explanations for each prediction
@@ -218,7 +218,7 @@ ws://YOUR_LOCAL_IP:8000/ws
 
 - **Mobile**: Flutter, Provider, sensors_plus
 - **Server**: Python, websockets, asyncio
-- **RAG**: LangChain, OpenAI (embeddings + GPT-4o-mini)
+- **RAG**: LangChain, OpenAI (embeddings + GPT-5-mini)
 - **Vector DB**: Milvus/Zilliz Cloud
 - **Features**: pandas, numpy (statistical feature extraction)
 

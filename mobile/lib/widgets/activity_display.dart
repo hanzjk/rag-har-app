@@ -6,6 +6,7 @@ class ActivityDisplay extends StatefulWidget {
   final bool isBuffering;
   final DateTime? lastUpdated;
   final String? reasoning;
+  final VoidCallback? onStop;
 
   const ActivityDisplay({
     super.key,
@@ -13,6 +14,7 @@ class ActivityDisplay extends StatefulWidget {
     this.isBuffering = false,
     this.lastUpdated,
     this.reasoning,
+    this.onStop,
   });
 
   @override
@@ -111,28 +113,30 @@ class _ActivityDisplayState extends State<ActivityDisplay>
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.white, Color(0xFFF9FAFB)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Color(0xFFE5E7EB),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+    return Stack(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.white, Color(0xFFF9FAFB)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Color(0xFFE5E7EB),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      padding: const EdgeInsets.all(24.0),
-      width: double.infinity,
+          padding: const EdgeInsets.all(24.0),
+          width: double.infinity,
       child: widget.isBuffering
           ? Column(
               mainAxisSize: MainAxisSize.min,
@@ -291,6 +295,51 @@ class _ActivityDisplayState extends State<ActivityDisplay>
                 ],
               ],
             ),
+        ),
+        // Stop button in top-right corner
+        if (widget.onStop != null)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: widget.onStop,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.red.withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.stop_circle,
+                        size: 16,
+                        color: Colors.red[700],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Stop',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.red[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

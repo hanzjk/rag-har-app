@@ -137,6 +137,7 @@ class WebSocketService {
       }
 
       if (activity != null) {
+        print('🎯 Adding prediction to activityStream: $activity (reasoning: ${reasoning?.substring(0, reasoning.length > 50 ? 50 : reasoning.length)}...)');
         _activityController.add(
           ActivityPrediction(
             activity: ActivityType.fromString(activity),
@@ -144,6 +145,7 @@ class WebSocketService {
             reasoning: reasoning,
           ),
         );
+        print('✅ Prediction added to activityStream');
       }
     } catch (e) {
       // Error parsing incoming message: $e

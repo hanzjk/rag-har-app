@@ -20,11 +20,7 @@ from data_collector import DataCollector
 from activity_predictor import ActivityPredictor
 from prediction_data_logger import PredictionDataLogger
 
-# Add rag-har directory to path for imports
-rag_har_path = os.path.join(os.path.dirname(__file__), 'rag-har')
-sys.path.insert(0, rag_har_path)
-
-from rag_pipeline import run_pipeline_async
+from rag_har_pipeline import run_pipeline_async
 
 # Configure logging
 logging.basicConfig(
@@ -62,11 +58,11 @@ async def handle_client(websocket):
     # Pass global classifier to predictor (may be None for mock mode)
     client_predictor = ActivityPredictor(classifier=global_classifier)
     client_collector = None  # Will be created on first collect_data message
-    client_prediction_logger = PredictionDataLogger()  # Logs prediction windows if enabled
+    client_prediction_logger = (
+        PredictionDataLogger()
+    )  # Logs prediction windows if enabled
     mode = "RAG-based" if global_classifier else "mock"
-    logger.info(
-        f"Created {mode} predictor for client: {client_id}"
-    )
+    logger.info(f"Created {mode} predictor for client: {client_id}")
 
     try:
         async for message in websocket:
@@ -81,8 +77,12 @@ async def handle_client(websocket):
                     # Create collector on first collect_data message
                     if client_collector is None:
                         subject_id = data.get("subject_id", "subject0")
-                        client_collector = DataCollector(data_dir, subject_id=subject_id)
-                        logger.info(f"Created data collector for {client_collector.get_subject_folder_name()}")
+                        client_collector = DataCollector(
+                            data_dir, subject_id=subject_id
+                        )
+                        logger.info(
+                            f"Created data collector for {client_collector.get_subject_folder_name()}"
+                        )
 
                     activity = data.get("activity", "unlabeled")
                     success = client_collector.save_sensor_data(data, activity)
@@ -109,12 +109,14 @@ async def handle_client(websocket):
                     logger.info(f"Total samples collected: {sample_count}")
 
                     if client_collector is None:
-                        logger.warning("No data collector exists - no data was collected")
+                        logger.warning(
+                            "No data collector exists - no data was collected"
+                        )
                         error_response = {
                             "type": "stop_collection_ack",
                             "samples_collected": 0,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "message": "No data was collected"
+                            "message": "No data was collected",
                         }
                         await websocket.send(json.dumps(error_response))
                         continue
@@ -131,7 +133,7 @@ async def handle_client(websocket):
                         "samples_collected": sample_count,
                         "subject_folder": subject_folder_name,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "message": "Data collection stopped. Starting RAG-HAR pipeline..."
+                        "message": "Data collection stopped. Starting RAG-HAR pipeline...",
                     }
                     await websocket.send(json.dumps(response))
 
@@ -146,15 +148,17 @@ async def handle_client(websocket):
                             "type": "pipeline_started",
                             "subject_folder": subject_folder_name,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "message": "RAG-HAR pipeline is processing your data in the background"
+                            "message": "RAG-HAR pipeline is processing your data in the background",
                         }
                         await websocket.send(json.dumps(pipeline_response))
                     except Exception as e:
-                        logger.error(f"Failed to start RAG-HAR pipeline: {e}", exc_info=True)
+                        logger.error(
+                            f"Failed to start RAG-HAR pipeline: {e}", exc_info=True
+                        )
                         error_response = {
                             "type": "pipeline_error",
                             "error": str(e),
-                            "timestamp": datetime.now(timezone.utc).isoformat()
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                         await websocket.send(json.dumps(error_response))
 
@@ -182,9 +186,7 @@ async def handle_client(websocket):
 
                         # Remove window_data before sending to client (too large)
                         prediction_to_send = {
-                            k: v
-                            for k, v in prediction.items()
-                            if k != "window_data"
+                            k: v for k, v in prediction.items() if k != "window_data"
                         }
 
                         try:
@@ -274,7 +276,7 @@ if __name__ == "__main__":
         from classifier import RAGActivityClassifier
 
         global_classifier = RAGActivityClassifier(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             fewshot=15,
             out_fewshot=10,
         )

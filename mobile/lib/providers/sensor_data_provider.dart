@@ -34,6 +34,8 @@ class SensorDataProvider extends ChangeNotifier {
   static const int _windowSize = 200; // 4 seconds at 50Hz
   int _countdown = 0;
   Timer? _countdownTimer;
+  Timer? _autoContinueTimer;
+  bool _continuousMode = true; // Enable continuous predictions by default
 
   SensorData? get latestData => _latestData;
   bool get isCollecting => _isCollecting;
@@ -49,8 +51,11 @@ class SensorDataProvider extends ChangeNotifier {
   int get countdown => _countdown;
 
   // Convenience getters for UI
-  bool get isWaitingForPrediction => _recognitionState == RecognitionState.waitingForPrediction;
-  bool get isPredictionReceived => _recognitionState == RecognitionState.predictionReceived;
+  bool get isWaitingForPrediction =>
+      _recognitionState == RecognitionState.waitingForPrediction;
+  bool get isPredictionReceived =>
+      _recognitionState == RecognitionState.predictionReceived;
+  bool get continuousMode => _continuousMode;
 
   Duration get collectionDuration {
     if (_collectionStartTime == null) return Duration.zero;
@@ -60,11 +65,16 @@ class SensorDataProvider extends ChangeNotifier {
   SensorDataProvider({
     required dynamic sensorService,
     required WebSocketService websocketService,
-  })  : _sensorService = sensorService,
-        _websocketService = websocketService;
+  }) : _sensorService = sensorService,
+       _websocketService = websocketService;
 
   void setActivityLabel(String? label) {
     _currentActivityLabel = label;
+    notifyListeners();
+  }
+
+  void setContinuousMode(bool enabled) {
+    _continuousMode = enabled;
     notifyListeners();
   }
 
@@ -78,33 +88,59 @@ class SensorDataProvider extends ChangeNotifier {
     _recognitionState = RecognitionState.idle;
 
     // Listen for predictions from server
-    _predictionSubscription = _websocketService.messageStream.listen((message) {
-      try {
-        final data = jsonDecode(message);
+    print('🎧 Setting up prediction listener...');
+    _predictionSubscription = _websocketService.messageStream.listen(
+      (message) {
+        print(
+          '📨 Raw WebSocket message received: ${message.substring(0, message.length > 100 ? 100 : message.length)}...',
+        );
+        try {
+          final data = jsonDecode(message);
+          print('📦 Parsed message type: ${data['type']}');
 
-        if (data['type'] == 'activity_prediction') {
-          final activity = data['activity'];
-          print('📥 Received prediction: $activity');
+          if (data['type'] == 'activity_prediction') {
+            final activity = data['activity'];
+            print('📥 Received prediction: $activity');
 
-          // Update state to show prediction received
-          _latestPrediction = activity;
-          _recognitionState = RecognitionState.predictionReceived;
-          _isCollecting = false;
+            // Update state to show prediction received
+            _latestPrediction = activity;
+            _recognitionState = RecognitionState.predictionReceived;
+            _isCollecting = false;
 
-          notifyListeners();
+            notifyListeners();
+
+            // If continuous mode is enabled, automatically start next window after 5 seconds
+            if (_continuousMode) {
+              print('🔄 Continuous mode: Starting next window in 5 seconds...');
+              _autoContinueTimer?.cancel();
+              _autoContinueTimer = Timer(const Duration(seconds: 5), () {
+                if (_recognitionState == RecognitionState.predictionReceived) {
+                  print('🔄 Auto-continuing to next window');
+                  collectNextWindow();
+                }
+              });
+            }
+          }
+        } catch (e) {
+          print('❌ Error parsing prediction: $e');
+          print('❌ Message was: $message');
         }
-      } catch (e) {
-        print('Error parsing prediction: $e');
-      }
-    });
+      },
+      onError: (error) {
+        print('❌ WebSocket stream error: $error');
+      },
+      onDone: () {
+        print('⚠️ WebSocket stream closed!');
+      },
+    );
 
     collectNextWindow();
   }
 
   void collectNextWindow() {
-    print('🔄 Starting countdown before collection');
+    print('🔄 Starting next collection window');
 
-    // IMPORTANT: Stop sensor service to prevent data collection during countdown
+    // Stop sensor service to clean up
     _subscription?.cancel();
     _subscription = null;
     _sensorService.stopStreaming(); // Clean up old timers and subscriptions
@@ -112,29 +148,12 @@ class SensorDataProvider extends ChangeNotifier {
 
     _samplesInCurrentWindow = 0;
     _latestPrediction = null;
-    _countdown = 3;
-    _recognitionState = RecognitionState.countdown;
+    _recognitionState = RecognitionState.collecting;
 
-    // Notify immediately so UI shows countdown
+    // Notify and start collection immediately (no countdown)
     notifyListeners();
-
-    // Start countdown timer (3, 2, 1, GO!)
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_countdown > 0) {
-        _countdown--;
-        print('⏱️ Countdown: $_countdown');
-        notifyListeners();
-      } else {
-        // Countdown finished, start collection
-        timer.cancel();
-        _countdownTimer = null;
-        _recognitionState = RecognitionState.collecting;
-        print('🚀 GO! Starting data collection');
-        notifyListeners();
-        startCollection();
-      }
-    });
+    print('🚀 Starting data collection');
+    startCollection();
   }
 
   void startCollection() {
@@ -151,7 +170,9 @@ class SensorDataProvider extends ChangeNotifier {
           _samplesInCurrentWindow >= _windowSize) {
         // Only transition to waiting state if not already waiting or received
         if (_recognitionState == RecognitionState.collecting) {
-          print('✅ Window complete ($_samplesInCurrentWindow samples). Waiting for prediction...');
+          print(
+            '✅ Window complete ($_samplesInCurrentWindow samples). Waiting for prediction...',
+          );
           _recognitionState = RecognitionState.waitingForPrediction;
           _isCollecting = false;
           notifyListeners();
@@ -165,7 +186,6 @@ class SensorDataProvider extends ChangeNotifier {
         timestamp: data.timestamp,
         accelerometer: data.accelerometer,
         gyroscope: data.gyroscope,
-        magnetometer: data.magnetometer,
         activityLabel: _currentActivityLabel,
         messageType: _currentMessageType,
       );
@@ -184,14 +204,22 @@ class SensorDataProvider extends ChangeNotifier {
   }
 
   void stopCollection() {
+    print('🛑 Stopping collection...');
     _isCollecting = false;
     _subscription?.cancel();
     _subscription = null;
     _sensorService.stopStreaming(); // Clean up sensor service
-    _predictionSubscription?.cancel();
-    _predictionSubscription = null;
+
+    if (_predictionSubscription != null) {
+      print('🔇 Cancelling prediction subscription');
+      _predictionSubscription?.cancel();
+      _predictionSubscription = null;
+    }
+
     _countdownTimer?.cancel();
     _countdownTimer = null;
+    _autoContinueTimer?.cancel();
+    _autoContinueTimer = null;
     _collectionStartTime = null;
     _samplesInCurrentWindow = 0;
     _countdown = 0;
@@ -205,6 +233,7 @@ class SensorDataProvider extends ChangeNotifier {
     _subscription?.cancel();
     _predictionSubscription?.cancel();
     _countdownTimer?.cancel();
+    _autoContinueTimer?.cancel();
     _sensorService.dispose();
     super.dispose();
   }

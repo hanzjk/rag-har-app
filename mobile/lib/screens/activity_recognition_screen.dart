@@ -233,6 +233,7 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
                         isBuffering: isBuffering,
                         lastUpdated: lastUpdated,
                         reasoning: reasoning,
+                        onStop: state != RecognitionState.idle ? _toggleRecognition : null,
                       );
                     },
                   ),
