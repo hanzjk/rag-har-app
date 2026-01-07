@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/sensor_data_provider.dart';
 import '../providers/activity_provider.dart';
+import '../providers/device_info_provider.dart';
 import '../services/permission_service.dart';
 import '../services/websocket_service.dart';
 import 'home_screen.dart';
@@ -449,7 +450,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
 
                   if (isCollecting) const SizedBox(height: 12),
 
-                  // Active Devices (for now showing only iPhone)
+                  // Active Devices (for now showing only Phone)
                   if (!isCollecting)
                     Container(
                       width: double.infinity,
@@ -491,7 +492,15 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              _buildDeviceCard('iPhone', Icons.phone_android, 87),
+                              Consumer<DeviceInfoProvider>(
+                                builder: (context, deviceInfo, child) {
+                                  return _buildDeviceCard(
+                                    'Phone',
+                                    Icons.phone_android,
+                                    deviceInfo.batteryLevel,
+                                  );
+                                },
+                              ),
                             ],
                           ),
                         ],

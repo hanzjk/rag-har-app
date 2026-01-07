@@ -18,6 +18,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import openai
+from sklearn.metrics import  f1_score
 
 load_dotenv()
 
@@ -593,13 +594,39 @@ class RAGActivityClassifier:
             key = f"{true} -> {pred}"
             confusion_matrix[key] = confusion_matrix.get(key, 0) + 1
 
-        # Per-class accuracy
-        per_class_accuracy = {}
+        # Extract true and predicted labels for sklearn metrics
+        y_true = [r["true_label"] for r in results]
+        y_pred = [r["prediction"] for r in results]
+
+        # Per-class metrics (precision, recall, F1)
+        per_class_metrics = {}
         for label in self.valid_labels:
             class_results = [r for r in results if r["true_label"] == label]
             if class_results:
+                # Accuracy
                 class_correct = sum(1 for r in class_results if r["correct"])
-                per_class_accuracy[label] = class_correct / len(class_results)
+                class_accuracy = class_correct / len(class_results)
+
+                # Precision, Recall, F1
+                true_positives = sum(1 for r in results if r["prediction"] == label and r["true_label"] == label)
+                false_positives = sum(1 for r in results if r["prediction"] == label and r["true_label"] != label)
+                false_negatives = sum(1 for r in results if r["prediction"] != label and r["true_label"] == label)
+
+                precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
+                recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0.0
+                f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+                per_class_metrics[label] = {
+                    "accuracy": class_accuracy,
+                    "precision": precision,
+                    "recall": recall,
+                    "f1": f1,
+                    "support": len(class_results)
+                }
+
+        # Overall F1 scores (macro and weighted)
+        f1_macro = f1_score(y_true, y_pred, average='macro', zero_division=0)
+        f1_weighted = f1_score(y_true, y_pred, average='weighted', zero_division=0)
 
         # Final report
         logger.info("")
@@ -608,11 +635,23 @@ class RAGActivityClassifier:
         logger.info("=" * 80)
         logger.info(f"Total samples: {total}")
         logger.info(f"Correct: {correct}")
-        logger.info(f"Accuracy: {accuracy:.2%}")
+        logger.info(f"Overall Accuracy: {accuracy:.2%}")
+        logger.info(f"Overall F1 (macro): {f1_macro:.2%}")
+        logger.info(f"Overall F1 (weighted): {f1_weighted:.2%}")
         logger.info("")
-        logger.info("Per-class accuracy:")
-        for label, acc in sorted(per_class_accuracy.items()):
-            logger.info(f"  {label}: {acc:.2%}")
+        logger.info("Per-class metrics:")
+        logger.info(f"{'Activity':<15} {'Accuracy':<10} {'Precision':<10} {'Recall':<10} {'F1':<10} {'Support':<8}")
+        logger.info("-" * 70)
+        for label in sorted(per_class_metrics.keys()):
+            metrics = per_class_metrics[label]
+            logger.info(
+                f"{label:<15} "
+                f"{metrics['accuracy']:<10.2%} "
+                f"{metrics['precision']:<10.2%} "
+                f"{metrics['recall']:<10.2%} "
+                f"{metrics['f1']:<10.2%} "
+                f"{metrics['support']:<8}"
+            )
         logger.info("")
         logger.info("Confusion matrix (true -> predicted):")
         for key, count in sorted(confusion_matrix.items()):
@@ -621,9 +660,11 @@ class RAGActivityClassifier:
 
         return {
             "accuracy": accuracy,
+            "f1_macro": f1_macro,
+            "f1_weighted": f1_weighted,
             "total_samples": total,
             "correct_samples": correct,
-            "per_class_accuracy": per_class_accuracy,
+            "per_class_metrics": per_class_metrics,
             "confusion_matrix": confusion_matrix,
             "detailed_results": results,
         }

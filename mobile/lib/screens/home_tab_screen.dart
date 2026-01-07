@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/sensor_data_provider.dart';
+import '../providers/device_info_provider.dart';
 import '../models/activity_type.dart';
 import '../services/permission_service.dart';
 
@@ -433,12 +434,16 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                                                 size: 12,
                                               ),
                                               const SizedBox(width: 2),
-                                              Text(
-                                                '87%',
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 12,
-                                                ),
+                                              Consumer<DeviceInfoProvider>(
+                                                builder: (context, deviceInfo, child) {
+                                                  return Text(
+                                                    '${deviceInfo.batteryLevel}%',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 12,
+                                                    ),
+                                                  );
+                                                },
                                               ),
                                             ],
                                           ),

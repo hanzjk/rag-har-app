@@ -4,6 +4,7 @@ import 'package:dotted_border/dotted_border.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/sensor_data_provider.dart';
 import '../providers/activity_provider.dart';
+import '../providers/device_info_provider.dart';
 import '../services/permission_service.dart';
 import '../services/websocket_service.dart' as ws;
 
@@ -256,11 +257,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _buildDeviceCard(
-                      icon: Icons.phone_android,
-                      deviceName: 'Samsung Galaxy S24',
-                      status: 'Connected',
-                      battery: 87,
+                    Consumer<DeviceInfoProvider>(
+                      builder: (context, deviceInfo, child) {
+                        return _buildDeviceCard(
+                          icon: Icons.phone_android,
+                          deviceName: deviceInfo.deviceName,
+                          status: 'Connected',
+                          battery: deviceInfo.batteryLevel,
+                          isCharging: deviceInfo.isCharging,
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
                     InkWell(
@@ -538,7 +544,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String deviceName,
     required String status,
     required int battery,
+    bool isCharging = false,
   }) {
+    // Choose battery icon based on charging state and level
+    IconData batteryIcon;
+    if (isCharging) {
+      batteryIcon = Icons.battery_charging_full;
+    } else if (battery > 90) {
+      batteryIcon = Icons.battery_full;
+    } else if (battery > 60) {
+      batteryIcon = Icons.battery_5_bar;
+    } else if (battery > 30) {
+      batteryIcon = Icons.battery_3_bar;
+    } else if (battery > 10) {
+      batteryIcon = Icons.battery_2_bar;
+    } else {
+      batteryIcon = Icons.battery_1_bar;
+    }
+
+    // Battery color based on level
+    Color batteryColor;
+    if (battery <= 20) {
+      batteryColor = Color(0xFFDC2626); // Red for low battery
+    } else if (battery <= 50) {
+      batteryColor = Color(0xFFF59E0B); // Orange for medium battery
+    } else {
+      batteryColor = Color(0xFF059669); // Green for good battery
+    }
+
     return Row(
       children: [
         Container(
@@ -576,8 +609,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(width: 6),
                   Icon(
-                    Icons.battery_charging_full,
-                    color: Color(0xFF059669),
+                    batteryIcon,
+                    color: batteryColor,
                     size: 14,
                   ),
                   const SizedBox(width: 4),
@@ -586,7 +619,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF059669),
+                      color: batteryColor,
                     ),
                   ),
                 ],

@@ -26,22 +26,15 @@ class PredictionDataLogger:
         # Check if logging is enabled via environment variable
         self.enabled = os.getenv('SAVE_PREDICTION_WINDOWS', 'false').lower() == 'true'
 
+        self.data_dir = Path(data_dir)
+        self.session_folder = None
+        self.window_count = 0
+        self._initialized = False
+
         if not self.enabled:
             logger.info("Prediction window logging is DISABLED (set SAVE_PREDICTION_WINDOWS=true to enable)")
-            return
-
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(exist_ok=True)
-
-        # Create session folder with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.session_folder = self.data_dir / f"session_{timestamp}"
-        self.session_folder.mkdir(exist_ok=True)
-
-        self.window_count = 0
-
-        logger.info(f"✓ Prediction window logging ENABLED")
-        logger.info(f"  Saving to: {self.session_folder}")
+        else:
+            logger.info("Prediction window logging is ENABLED (folders will be created on first prediction)")
 
     def log_prediction_window(self, window_data: list, prediction: dict) -> bool:
         """
@@ -56,6 +49,18 @@ class PredictionDataLogger:
         """
         if not self.enabled:
             return False
+
+        # Lazy initialization - create directories only when first prediction is logged
+        if not self._initialized:
+            self.data_dir.mkdir(exist_ok=True)
+
+            # Create session folder with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.session_folder = self.data_dir / f"session_{timestamp}"
+            self.session_folder.mkdir(exist_ok=True)
+
+            self._initialized = True
+            logger.info(f"✓ Created prediction logging session: {self.session_folder}")
 
         try:
             predicted_activity = prediction.get('activity', 'unknown')
@@ -105,6 +110,6 @@ class PredictionDataLogger:
 
     def close(self):
         """Clean up and log summary."""
-        if self.enabled and self.window_count > 0:
+        if self.enabled and self.window_count > 0 and self.session_folder:
             logger.info(f"Prediction logger closed. Total windows saved: {self.window_count}")
             logger.info(f"Location: {self.session_folder}")
