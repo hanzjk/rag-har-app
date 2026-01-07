@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 DATASET_NAME = "har_demo"
 BASE_PATH = Path(__file__).parent.parent / "collected_data"
 OUTPUT_BASE = Path(__file__).parent.parent / "output" / DATASET_NAME
-ACTIVITIES = ["walking", "sitting", "standing", "jumping", "lying", "running"]
+ACTIVITIES = ["walking", "sitting", "standing", "jumping", "lying_down", "running"]
 WINDOW_SIZE = 200  # 4 seconds at 50Hz
 STEP_SIZE = 100    # 50% overlap
-TEST_RATIO = 0.1   # 10% test data
+TEST_RATIO = 0.3   # 10% test data
 PROCESSED_SESSIONS_FILE = OUTPUT_BASE / "processed_sessions.txt"
 
 

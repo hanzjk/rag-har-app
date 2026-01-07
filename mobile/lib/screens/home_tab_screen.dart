@@ -139,10 +139,10 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
         return 'Minimal movement detected, user at rest';
       case ActivityType.standing:
         return 'Stationary position with slight movements';
-      case ActivityType.walkingUpstairs:
-        return 'Upward movement with elevated effort detected';
-      case ActivityType.walkingDownstairs:
-        return 'Downward movement with controlled pace';
+      case ActivityType.jumping:
+        return 'Vertical movement with high acceleration detected';
+      case ActivityType.lying:
+        return 'Horizontal position with minimal movement detected';
       case ActivityType.unknown:
         return 'Analyzing movement patterns...';
     }
@@ -265,11 +265,23 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                                     scale: _scaleAnimation,
                                     child: Row(
                                       children: [
-                                        Icon(
-                                          Icons.sensors,
-                                          color: Colors.white,
-                                          size: 20
-                                        ),
+                                        // Show loader when collecting/waiting, sensor icon when prediction received
+                                        if (recognitionState == RecognitionState.collecting ||
+                                            recognitionState == RecognitionState.waitingForPrediction)
+                                          SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                            ),
+                                          )
+                                        else
+                                          Icon(
+                                            Icons.sensors,
+                                            color: Colors.white,
+                                            size: 20
+                                          ),
                                         const SizedBox(width: 12),
                                         Text(
                                           'Activity Detected',
@@ -336,7 +348,11 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _getActivityDescription(currentActivity),
+                              // Use actual backend reasoning when available (demo mode off)
+                              // Otherwise use mocked description (demo mode on or no reasoning)
+                              appState.demoModeEnabled || activityProvider.activityHistory.isEmpty
+                                  ? _getActivityDescription(currentActivity)
+                                  : (activityProvider.activityHistory.first.reasoning ?? _getActivityDescription(currentActivity)),
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.8),
                                 fontSize: 14,

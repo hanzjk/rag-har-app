@@ -3,8 +3,8 @@ enum ActivityType {
   running,
   sitting,
   standing,
-  walkingUpstairs,
-  walkingDownstairs,
+  lying,
+  jumping,
   unknown;
 
   static ActivityType fromString(String value) {
@@ -17,12 +17,12 @@ enum ActivityType {
         return ActivityType.sitting;
       case 'standing':
         return ActivityType.standing;
-      case 'walking_upstairs':
-      case 'walkingupstairs':
-        return ActivityType.walkingUpstairs;
-      case 'walking_downstairs':
-      case 'walkingdownstairs':
-        return ActivityType.walkingDownstairs;
+      case 'lying_down':
+        return ActivityType.lying;
+      case 'lying':
+        return ActivityType.lying;
+      case 'jumping':
+        return ActivityType.jumping;
       default:
         return ActivityType.unknown;
     }
@@ -38,10 +38,10 @@ enum ActivityType {
         return 'Sitting';
       case ActivityType.standing:
         return 'Standing';
-      case ActivityType.walkingUpstairs:
-        return 'Walking Upstairs';
-      case ActivityType.walkingDownstairs:
-        return 'Walking Downstairs';
+      case ActivityType.lying:
+        return 'Lying';
+      case ActivityType.jumping:
+        return 'Jumping';
       case ActivityType.unknown:
         return 'Unknown';
     }

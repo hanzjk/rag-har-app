@@ -10,7 +10,7 @@ Python WebSocket server for Human Activity Recognition (HAR) with two modes:
 - **RAG-based classification:** Uses LLM with hybrid vector search (Milvus + OpenAI)
 - **Automatic pipeline:** Preprocessing → Feature extraction → Vector indexing
 - **Session-based tracking:** Incremental updates, no duplicate processing
-- **Supported activities:** Walking, running, sitting, standing, jumping, lying
+- **Supported activities:** Walking, running, sitting, standing, jumping, lying_down
 
 ## Architecture
 

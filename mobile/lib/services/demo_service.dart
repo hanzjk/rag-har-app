@@ -24,11 +24,10 @@ class DemoService {
     ActivityType.standing,
     ActivityType.walking,
     ActivityType.running,
-    ActivityType.walking,
-    ActivityType.walkingUpstairs,
-    ActivityType.walkingDownstairs,
+    ActivityType.jumping,
     ActivityType.walking,
     ActivityType.sitting,
+    ActivityType.lying,
   ];
   int _currentActivityIndex = 0;
 

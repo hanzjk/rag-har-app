@@ -132,7 +132,7 @@ flutter run
 - sitting
 - standing
 - jumping
-- lying
+- lying_down
 
 ## RAG Pipeline
 

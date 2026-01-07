@@ -66,10 +66,10 @@ class _ActivityDisplayState extends State<ActivityDisplay>
         return Icons.event_seat;
       case ActivityType.standing:
         return Icons.accessibility_new;
-      case ActivityType.walkingUpstairs:
-        return Icons.stairs;
-      case ActivityType.walkingDownstairs:
-        return Icons.stairs;
+      case ActivityType.jumping:
+        return Icons.trending_up;
+      case ActivityType.lying:
+        return Icons.hotel;
       case ActivityType.unknown:
         return Icons.help_outline;
     }
@@ -85,9 +85,9 @@ class _ActivityDisplayState extends State<ActivityDisplay>
         return Colors.green;
       case ActivityType.standing:
         return Colors.orange;
-      case ActivityType.walkingUpstairs:
+      case ActivityType.jumping:
         return Colors.purple;
-      case ActivityType.walkingDownstairs:
+      case ActivityType.lying:
         return Colors.teal;
       case ActivityType.unknown:
         return Colors.grey;

@@ -109,11 +109,11 @@ class SensorDataProvider extends ChangeNotifier {
 
             notifyListeners();
 
-            // If continuous mode is enabled, automatically start next window after 5 seconds
+            // If continuous mode is enabled, automatically start next window after 3 seconds
             if (_continuousMode) {
-              print('🔄 Continuous mode: Starting next window in 5 seconds...');
+              print('🔄 Continuous mode: Starting next window in 3 seconds...');
               _autoContinueTimer?.cancel();
-              _autoContinueTimer = Timer(const Duration(seconds: 5), () {
+              _autoContinueTimer = Timer(const Duration(seconds: 3), () {
                 if (_recognitionState == RecognitionState.predictionReceived) {
                   print('🔄 Auto-continuing to next window');
                   collectNextWindow();
