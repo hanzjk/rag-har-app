@@ -594,7 +594,12 @@ class RAGActivityClassifier:
             key = f"{true} -> {pred}"
             confusion_matrix[key] = confusion_matrix.get(key, 0) + 1
 
-        # Per-class accuracy
+        # Calculate F1 scores
+        y_true = [r["true_label"] for r in results]
+        y_pred = [r["prediction"] for r in results]
+        f1_weighted = f1_score(y_true, y_pred, average="weighted")
+
+        # Per-class metrics (accuracy and F1)
         per_class_metrics = {}
         for label in self.valid_labels:
             class_results = [r for r in results if r["true_label"] == label]
@@ -602,15 +607,19 @@ class RAGActivityClassifier:
                 class_correct = sum(1 for r in class_results if r["correct"])
                 class_accuracy = class_correct / len(class_results)
 
+                # Calculate per-class F1 score
+                class_f1 = f1_score(
+                    y_true,
+                    y_pred,
+                    labels=[label],
+                    average='macro',
+                    zero_division=0
+                )
+
                 per_class_metrics[label] = {
                     "accuracy": class_accuracy,
-                    "support": len(class_results)
+                    "f1": class_f1,
                 }
-
-        # Calculate F1 scores
-        y_true = [r["true_label"] for r in results]
-        y_pred = [r["prediction"] for r in results]
-        f1_weighted = f1_score(y_true, y_pred, average='weighted')
 
         # Final report
         logger.info("")
@@ -623,14 +632,14 @@ class RAGActivityClassifier:
         logger.info(f"F1 Score (weighted): {f1_weighted:.2%}")
         logger.info("")
         logger.info("Per-class metrics:")
-        logger.info(f"{'Activity':<15} {'Accuracy':<10} {'Support':<8}")
-        logger.info("-" * 35)
+        logger.info(f"{'Activity':<15} {'Accuracy':<10} {'F1 Score':<10}")
+        logger.info("-" * 38)
         for label in sorted(per_class_metrics.keys()):
             metrics = per_class_metrics[label]
             logger.info(
                 f"{label:<15} "
                 f"{metrics['accuracy']:<10.2%} "
-                f"{metrics['support']:<8}"
+                f"{metrics['f1']:<10.2%}"
             )
         logger.info("")
         logger.info("Confusion matrix (true -> predicted):")
