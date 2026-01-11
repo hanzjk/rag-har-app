@@ -4,6 +4,7 @@ Creates embeddings and indexes time series data to Milvus vector database.
 Supports both creating new collections and adding data to existing ones.
 """
 
+import argparse
 import glob
 import os
 import re
@@ -624,4 +625,14 @@ def index_data(force_recreate: bool = False) -> int:
 
 
 if __name__ == "__main__":
-    index_data()
+    parser = argparse.ArgumentParser(
+        description="Index HAR time series data to Milvus vector database"
+    )
+    parser.add_argument(
+        "--force-recreate",
+        action="store_true",
+        help="Drop and recreate the collection (clears all existing data and tracking file)"
+    )
+    args = parser.parse_args()
+
+    index_data(force_recreate=args.force_recreate)

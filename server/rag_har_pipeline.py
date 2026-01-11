@@ -4,6 +4,7 @@ Coordinates the preprocessing, feature extraction, and indexing pipeline
 for collected sensor data.
 """
 
+import argparse
 import os
 import sys
 import logging
@@ -21,7 +22,7 @@ import timeseries_indexing
 logger = logging.getLogger(__name__)
 
 
-def run_rag_pipeline():
+def run_rag_pipeline(force_recreate: bool = False):
     """
     Run the complete RAG-HAR pipeline:
     1. Preprocess data (windowing and train/test split)
@@ -30,6 +31,9 @@ def run_rag_pipeline():
 
     Data is expected to already be organized in subject folders:
     collected_data/subject0_20260104_153045/walking.csv, etc.
+
+    Args:
+        force_recreate: If True, drop and recreate the vector database collection
 
     Returns:
         Dict with pipeline results
@@ -55,7 +59,7 @@ def run_rag_pipeline():
 
         # Step 3: Index to vector database (train data only)
         logger.info("Step 3: Indexing to vector database...")
-        num_indexed = timeseries_indexing.index_data(force_recreate=False)
+        num_indexed = timeseries_indexing.index_data(force_recreate=force_recreate)
 
         logger.info("=" * 80)
         logger.info("RAG-HAR PIPELINE COMPLETED SUCCESSFULLY")
@@ -80,11 +84,14 @@ def run_rag_pipeline():
         }
 
 
-def run_pipeline_async():
+def run_pipeline_async(force_recreate: bool = False):
     """
     Run the RAG-HAR pipeline asynchronously in a separate thread.
     This allows the websocket server to continue handling connections
     while the pipeline runs.
+
+    Args:
+        force_recreate: If True, drop and recreate the vector database collection
 
     Returns:
         Thread object
@@ -93,6 +100,7 @@ def run_pipeline_async():
 
     thread = threading.Thread(
         target=run_rag_pipeline,
+        args=(force_recreate,),
         daemon=True
     )
     thread.start()
@@ -102,8 +110,18 @@ def run_pipeline_async():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description="Run the complete RAG-HAR pipeline (preprocess, extract features, index)"
+    )
+    parser.add_argument(
+        "--force-recreate",
+        action="store_true",
+        help="Drop and recreate the vector database collection (clears all existing data)"
+    )
+    args = parser.parse_args()
+
     # Run pipeline directly
-    result = run_rag_pipeline()
+    result = run_rag_pipeline(force_recreate=args.force_recreate)
     if result['success']:
         logger.info("Pipeline completed successfully!")
     else:
