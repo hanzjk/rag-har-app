@@ -107,11 +107,12 @@ def load_raw_data() -> Tuple[Dict[str, pd.DataFrame], List[str]]:
             if activity_file.exists():
                 df = pd.read_csv(activity_file)
 
-                # Omit first and last 4 seconds (200 samples at 50Hz)
-                samples_to_omit = 200
+                # Omit first and last 8 seconds (400 samples at 50Hz)
+                # This removes setup/transition artifacts at activity boundaries
+                samples_to_omit = 400
                 if len(df) > 2 * samples_to_omit:
                     df = df.iloc[samples_to_omit:-samples_to_omit].reset_index(drop=True)
-                    logger.info(f"  {session_name}/{activity}.csv: {len(df)} samples (after omitting first/last 4s)")
+                    logger.info(f"  {session_name}/{activity}.csv: {len(df)} samples (after omitting first/last 8s)")
                 else:
                     logger.warning(f"  {session_name}/{activity}.csv: {len(df)} samples - too short to omit edges, skipping file")
                     continue

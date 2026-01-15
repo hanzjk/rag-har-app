@@ -35,6 +35,7 @@ class SensorDataProvider extends ChangeNotifier {
   int _countdown = 0;
   Timer? _countdownTimer;
   Timer? _autoContinueTimer;
+  Timer? _keepAliveTimer; // Keep WebSocket alive during long predictions
   bool _continuousMode = true; // Enable continuous predictions by default
 
   SensorData? get latestData => _latestData;
@@ -102,6 +103,16 @@ class SensorDataProvider extends ChangeNotifier {
             final activity = data['activity'];
             print('📥 Received prediction: $activity');
 
+            // IMMEDIATELY stop sensor collection when prediction arrives
+            print('🛑 Stopping sensor collection (prediction received)');
+            _subscription?.cancel();
+            _subscription = null;
+            _sensorService.stopStreaming();
+
+            // Cancel keep-alive timer - prediction received
+            _keepAliveTimer?.cancel();
+            _keepAliveTimer = null;
+
             // Update state to show prediction received
             _latestPrediction = activity;
             _recognitionState = RecognitionState.predictionReceived;
@@ -109,13 +120,13 @@ class SensorDataProvider extends ChangeNotifier {
 
             notifyListeners();
 
-            // If continuous mode is enabled, automatically start next window after 3 seconds
+            // If continuous mode is enabled, automatically start next window after 4 seconds
             if (_continuousMode) {
-              print('🔄 Continuous mode: Starting next window in 3 seconds...');
+              print('🔄 Continuous mode: Starting next window in 4 seconds...');
               _autoContinueTimer?.cancel();
-              _autoContinueTimer = Timer(const Duration(seconds: 3), () {
+              _autoContinueTimer = Timer(const Duration(seconds: 4), () {
                 if (_recognitionState == RecognitionState.predictionReceived) {
-                  print('🔄 Auto-continuing to next window');
+                  print('🔄 Auto-continuing to next window (no countdown)');
                   collectNextWindow();
                 }
               });
@@ -134,7 +145,35 @@ class SensorDataProvider extends ChangeNotifier {
       },
     );
 
-    collectNextWindow();
+    // Start with 5-second countdown
+    _startCollectionWithCountdown();
+  }
+
+  void _startCollectionWithCountdown() {
+    print('⏱️ Starting 5-second countdown...');
+    _recognitionState = RecognitionState.countdown;
+    _countdown = 5;
+    notifyListeners();
+
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _countdown--;
+      notifyListeners();
+
+      if (_countdown <= 0) {
+        timer.cancel();
+        _countdownTimer = null;
+        print('🚀 Countdown complete, starting collection');
+        collectNextWindow();
+      }
+    });
+  }
+
+  void resumeRecognition() {
+    // Resume from idle state with countdown
+    if (_recognitionState == RecognitionState.idle) {
+      _startCollectionWithCountdown();
+    }
   }
 
   void collectNextWindow() {
@@ -175,6 +214,17 @@ class SensorDataProvider extends ChangeNotifier {
           );
           _recognitionState = RecognitionState.waitingForPrediction;
           _isCollecting = false;
+
+          // Start keep-alive timer to prevent connection timeout during long RAG predictions
+          _keepAliveTimer?.cancel();
+          _keepAliveTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+            if (_recognitionState == RecognitionState.waitingForPrediction) {
+              print('💓 Keep-alive ping (waiting for prediction)');
+              // Send a ping message to keep connection alive
+              _websocketService.sendPing();
+            }
+          });
+
           notifyListeners();
         }
         // Don't process more data once window is complete
@@ -220,6 +270,8 @@ class SensorDataProvider extends ChangeNotifier {
     _countdownTimer = null;
     _autoContinueTimer?.cancel();
     _autoContinueTimer = null;
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
     _collectionStartTime = null;
     _samplesInCurrentWindow = 0;
     _countdown = 0;
@@ -234,6 +286,7 @@ class SensorDataProvider extends ChangeNotifier {
     _predictionSubscription?.cancel();
     _countdownTimer?.cancel();
     _autoContinueTimer?.cancel();
+    _keepAliveTimer?.cancel();
     _sensorService.dispose();
     super.dispose();
   }

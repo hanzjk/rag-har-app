@@ -5,7 +5,7 @@ import '../providers/app_state_provider.dart';
 import '../providers/sensor_data_provider.dart';
 import '../providers/activity_provider.dart';
 import '../services/permission_service.dart';
-import '../services/websocket_service.dart';
+import '../services/websocket_service.dart' as ws;
 import '../models/activity_type.dart';
 import '../widgets/connection_status.dart';
 import '../widgets/activity_display.dart';
@@ -21,7 +21,7 @@ class ActivityRecognitionScreen extends StatefulWidget {
 
 class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
   final PermissionService _permissionService = PermissionService();
-  WebSocketService? _websocketService;
+  ws.WebSocketService? _websocketService;
   bool _isInitialized = false;
 
   @override
@@ -38,6 +38,32 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
       });
       _isInitialized = true;
     }
+  }
+
+  Future<void> _resumeRecognition() async {
+    final sensorDataProvider = context.read<SensorDataProvider>();
+    final appState = context.read<AppStateProvider>();
+
+    // Check if still connected
+    if (appState.connectionState != ws.ConnectionState.connected) {
+      // Need to reconnect first
+      try {
+        await _websocketService!.connect(appState.websocketUrl);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Reconnection failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    // Resume with countdown
+    sensorDataProvider.resumeRecognition();
   }
 
   Future<void> _toggleRecognition() async {
@@ -88,17 +114,12 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
         }
       }
     } else {
-      // Stop active session
+      // Stop active session (but keep activity recognition enabled for Resume)
       sensorDataProvider.stopCollection();
       activityProvider.stopListening();
 
-      // Only disconnect if motion capture is also disabled
-      if (!appState.motionCaptureEnabled) {
-        _websocketService!.disconnect();
-      }
-
-      // Update global state
-      await appState.setActivityRecognitionEnabled(false);
+      // Don't disconnect WebSocket - we want to resume quickly
+      // Don't disable activityRecognitionEnabled - keep it true so Resume button shows
     }
   }
 
@@ -412,6 +433,9 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
 
           final state = sensorData.recognitionState;
 
+          // Debug: print current state
+          print('🔘 FAB state: $state');
+
           // Show "Next Window" button when prediction is received
           if (state == RecognitionState.predictionReceived) {
             return Column(
@@ -446,19 +470,41 @@ class _ActivityRecognitionScreenState extends State<ActivityRecognitionScreen> {
             );
           }
 
-          // Default Start/Stop button
-          final isSessionActive = state != RecognitionState.idle;
+          // Hide buttons during countdown
+          if (state == RecognitionState.countdown) {
+            return const SizedBox.shrink();
+          }
 
+          // When idle, always show Resume + Start buttons
+          final isIdle = state == RecognitionState.idle;
+
+          if (isIdle) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.extended(
+                  onPressed: _resumeRecognition,
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Resume'),
+                  backgroundColor: Colors.blue,
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton.extended(
+                  onPressed: _toggleRecognition,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('New Session'),
+                  backgroundColor: Colors.green,
+                ),
+              ],
+            );
+          }
+
+          // Default Stop button for active states (collecting, waiting, etc.)
           return FloatingActionButton.extended(
             onPressed: _toggleRecognition,
-            icon: Icon(
-              isSessionActive ? Icons.stop : Icons.play_arrow,
-            ),
-            label: Text(
-              isSessionActive ? 'Stop' : 'Start',
-            ),
-            backgroundColor:
-                isSessionActive ? Colors.red : Colors.green,
+            icon: const Icon(Icons.stop),
+            label: const Text('Stop'),
+            backgroundColor: Colors.red,
           );
         },
       ),

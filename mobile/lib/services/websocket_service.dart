@@ -109,6 +109,20 @@ class WebSocketService {
     }
   }
 
+  void sendPing() {
+    if (_connectionState == ConnectionState.connected && _channel != null) {
+      try {
+        final pingMessage = jsonEncode({
+          'type': 'ping',
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+        _channel!.sink.add(pingMessage);
+      } catch (e) {
+        print('WebSocketService: Error sending ping: $e');
+      }
+    }
+  }
+
   void _handleIncomingMessage(dynamic message) {
     try {
       // Emit raw message to stream

@@ -20,6 +20,8 @@ from dotenv import load_dotenv
 import openai
 from sklearn.metrics import f1_score
 
+from feature_utils import FeatureExtractorUtils
+
 load_dotenv()
 
 # Suppress httpx logs
@@ -138,61 +140,14 @@ class RAGActivityClassifier:
             f"Retrieval: {self.fewshot} per segment → {self.out_fewshot} final samples"
         )
 
-    def _split_temporal_segments(self, df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
-        """
-        Split window into temporal segments: whole, start, middle, end.
-
-        Args:
-            df: Window DataFrame
-
-        Returns:
-            Dict with keys 'whole', 'start', 'middle', 'end'
-        """
-        total_len = len(df)
-        segment_size = total_len // 3
-
-        return {
-            "whole": df,
-            "start": df.iloc[:segment_size],
-            "middle": df.iloc[segment_size : 2 * segment_size],
-            "end": df.iloc[2 * segment_size :],
-        }
-
-    def _compute_stats(
-        self, series: pd.Series, stats_list: List[str]
-    ) -> Dict[str, float]:
-        """
-        Compute statistical features for a series.
-
-        Args:
-            series: Data series
-            stats_list: List of statistics to compute
-
-        Returns:
-            Dict of computed statistics
-        """
-        stats = {}
-        for stat in stats_list:
-            if stat == "mean":
-                stats["mean"] = series.mean()
-            elif stat == "std":
-                stats["std"] = series.std()
-            elif stat == "min":
-                stats["min"] = series.min()
-            elif stat == "max":
-                stats["max"] = series.max()
-            elif stat == "median":
-                stats["median"] = series.median()
-            elif stat == "p25":
-                stats["p25"] = series.quantile(0.25)
-            elif stat == "p75":
-                stats["p75"] = series.quantile(0.75)
-        return stats
+    # Note: _split_temporal_segments and _compute_stats removed - using FeatureExtractorUtils instead
 
     def _generate_feature_description(self, df: pd.DataFrame) -> str:
         """
         Generate feature description from a DataFrame, matching the format
         used in training (with temporal segmentation).
+
+        Uses FeatureExtractorUtils for consistent feature extraction with training pipeline.
 
         Args:
             df: Window DataFrame with columns like accel_x, accel_y, accel_z, etc.
@@ -200,8 +155,8 @@ class RAGActivityClassifier:
         Returns:
             Formatted feature description string
         """
-        # Split into temporal segments
-        segments = self._split_temporal_segments(df)
+        # Split into temporal segments using shared utility (same as training)
+        segments = FeatureExtractorUtils.split_temporal_segments(df)
 
         # Sensor metadata: (name, unit)
         sensor_metadata = {
@@ -229,11 +184,11 @@ class RAGActivityClassifier:
                 sensor_name, unit = sensor_metadata[prefix]
                 axes = ["x", "y", "z"]
 
-                # Per-axis features
+                # Per-axis features using shared utility (handles NaN consistently)
                 for axis_idx, axis in enumerate(axes, start=1):
                     col_name = f"{prefix}_{axis}"
                     if col_name in segment_df.columns:
-                        stats_dict = self._compute_stats(
+                        stats_dict = FeatureExtractorUtils.compute_stats(
                             segment_df[col_name], self.statistics
                         )
                         stats_str = ", ".join(
@@ -358,6 +313,11 @@ class RAGActivityClassifier:
             f"Retrieved {len(retrieved_labels)} samples. "
             f"Label distribution: {dict(label_counts)}"
         )
+
+        # DEBUG: Log candidate statistics summary
+        # logger.info(f"=== CANDIDATE STATISTICS (first 200 chars) ===")
+        # logger.info(f"{whole_stats[:200]}...")
+        # logger.info(f"=== END CANDIDATE STATISTICS ===")
 
         # Construct prompt for LLM
         retrieved_data = "\n\n".join(sections)

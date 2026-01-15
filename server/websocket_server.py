@@ -64,6 +64,9 @@ async def handle_client(websocket):
     mode = "RAG-based" if global_classifier else "mock"
     logger.info(f"Created {mode} predictor for client: {client_id}")
 
+    # Track if we're in an active prediction session
+    prediction_session_active = False
+
     try:
         async for message in websocket:
             try:
@@ -172,6 +175,12 @@ async def handle_client(websocket):
                         f"Received prediction request from {client_id} at {timestamp}"
                     )
 
+                    # Reset prediction counter if starting a new session
+                    if not prediction_session_active:
+                        logger.info(f"Starting new prediction session for {client_id}")
+                        client_predictor.reset_prediction_counter()
+                        prediction_session_active = True
+
                     # Predict activity using client-specific predictor
                     # Returns None if not at step boundary (step_size feature)
                     prediction = client_predictor.predict(data)
@@ -192,6 +201,10 @@ async def handle_client(websocket):
                         try:
                             # Send prediction back to client
                             await websocket.send(json.dumps(prediction_to_send))
+
+                            # Mark session as inactive after sending prediction
+                            # Next batch will start fresh
+                            prediction_session_active = False
 
                             # Only log non-buffering predictions
                             if prediction.get("status") != "buffering":

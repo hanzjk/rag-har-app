@@ -14,7 +14,8 @@ class HomeTabScreen extends StatefulWidget {
   State<HomeTabScreen> createState() => _HomeTabScreenState();
 }
 
-class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateMixin {
+class _HomeTabScreenState extends State<HomeTabScreen>
+    with TickerProviderStateMixin {
   final PermissionService _permissionService = PermissionService();
   late AnimationController _activityAnimationController;
   late AnimationController _cardFlashController;
@@ -45,10 +46,7 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
       vsync: this,
     );
     _flashAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _cardFlashController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _cardFlashController, curve: Curves.easeInOut),
     );
   }
 
@@ -66,8 +64,11 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
     final appState = context.read<AppStateProvider>();
 
     // Check if session is active (any state except idle)
-    final isSessionActive = sensorDataProvider.recognitionState != RecognitionState.idle;
-    print('🔘 HomeTabScreen: isSessionActive=$isSessionActive, recognitionState=${sensorDataProvider.recognitionState}');
+    final isSessionActive =
+        sensorDataProvider.recognitionState != RecognitionState.idle;
+    print(
+      '🔘 HomeTabScreen: isSessionActive=$isSessionActive, recognitionState=${sensorDataProvider.recognitionState}',
+    );
 
     if (!isSessionActive) {
       // Start new session
@@ -96,7 +97,9 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
           final websocketService = activityProvider.websocketService;
           print('🌐 HomeTabScreen: Connecting to ${appState.websocketUrl}');
           await websocketService.connect(appState.websocketUrl);
-          print('🌐 HomeTabScreen: Connected! Starting ActivityProvider listener...');
+          print(
+            '🌐 HomeTabScreen: Connected! Starting ActivityProvider listener...',
+          );
           activityProvider.startListening();
           print('🌐 HomeTabScreen: Starting SensorDataProvider recognition...');
           sensorDataProvider.startActivityRecognition();
@@ -116,19 +119,21 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
         }
       }
     } else {
-      // Stop active session
-      print('⏹️ HomeTabScreen: Stopping recognition session');
+      // Stop active session - fully disable like settings toggle
+      print('⏹️ HomeTabScreen: Fully stopping recognition (disabling)');
       sensorDataProvider.stopCollection();
       activityProvider.stopListening();
 
-      // Only disconnect if motion capture is also disabled
+      // Disconnect WebSocket if motion capture is also disabled
       if (!appState.motionCaptureEnabled) {
-        activityProvider.websocketService.disconnect();
+        sensorDataProvider.websocketService.disconnect();
       }
 
+      // Disable activity recognition (same as settings toggle)
       await appState.setActivityRecognitionEnabled(false);
     }
   }
+
   String _getActivityDescription(ActivityType activity) {
     switch (activity) {
       case ActivityType.running:
@@ -164,19 +169,28 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                   final currentActivity = activityProvider.currentActivity;
                   final isEnabled = appState.activityRecognitionEnabled;
                   final recognitionState = sensorDataProvider.recognitionState;
-                  final currentPredictionCount = activityProvider.activityHistory.length;
+                  final currentPredictionCount =
+                      activityProvider.activityHistory.length;
 
                   // Detect new prediction by checking history count
-                  if (currentPredictionCount > _predictionCount && currentActivity != ActivityType.unknown && isEnabled) {
+                  if (currentPredictionCount > _predictionCount &&
+                      currentActivity != ActivityType.unknown &&
+                      isEnabled) {
                     _predictionCount = currentPredictionCount;
                     if (!_hasReceivedFirstPrediction) {
-                      print('🎊 HomeTabScreen: First prediction received! ${currentActivity.displayName}');
+                      print(
+                        '🎊 HomeTabScreen: First prediction received! ${currentActivity.displayName}',
+                      );
                       _hasReceivedFirstPrediction = true;
                     } else {
-                      print('🎯 HomeTabScreen: New prediction #$currentPredictionCount received! ${currentActivity.displayName} (${_previousActivity == currentActivity ? "SAME ACTIVITY" : "CHANGED"})');
+                      print(
+                        '🎯 HomeTabScreen: New prediction #$currentPredictionCount received! ${currentActivity.displayName} (${_previousActivity == currentActivity ? "SAME ACTIVITY" : "CHANGED"})',
+                      );
                     }
                     // Trigger animations for EVERY prediction (even if same activity)
-                    print('🎬 HomeTabScreen: Triggering bounce and flash animations!');
+                    print(
+                      '🎬 HomeTabScreen: Triggering bounce and flash animations!',
+                    );
                     _activityAnimationController.reset();
                     _activityAnimationController.forward();
                     _cardFlashController.reset();
@@ -190,14 +204,17 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                   }
 
                   // Show processing state before first prediction (during both collecting and waiting)
-                  final isWaitingForFirstPrediction = isEnabled &&
-                                                       !_hasReceivedFirstPrediction &&
-                                                       recognitionState != RecognitionState.idle;
+                  final isWaitingForFirstPrediction =
+                      isEnabled &&
+                      !_hasReceivedFirstPrediction &&
+                      recognitionState != RecognitionState.idle;
 
                   _previousActivity = currentActivity;
 
                   // Auto-start recognition if enabled and not running (only once)
-                  if (isEnabled && recognitionState == RecognitionState.idle && !_hasAutoStarted) {
+                  if (isEnabled &&
+                      recognitionState == RecognitionState.idle &&
+                      !_hasAutoStarted) {
                     _hasAutoStarted = true;
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       _toggleRecognition();
@@ -216,8 +233,10 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                         builder: (context, child) {
                           // Create flash effect that peaks and fades (0 → 1 → 0)
                           final flashValue = _flashAnimation.value < 0.5
-                              ? _flashAnimation.value * 2  // 0 to 1 (first half)
-                              : (1 - _flashAnimation.value) * 2; // 1 to 0 (second half)
+                              ? _flashAnimation.value *
+                                    2 // 0 to 1 (first half)
+                              : (1 - _flashAnimation.value) *
+                                    2; // 1 to 0 (second half)
 
                           return Container(
                             width: double.infinity,
@@ -226,8 +245,16 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                               gradient: LinearGradient(
                                 colors: isEnabled
                                     ? [
-                                        Color.lerp(Color(0xFF8B5CF6), Color(0xFFFFFFFF), flashValue * 0.4)!,
-                                        Color.lerp(Color(0xFF9333EA), Color(0xFFFFFFFF), flashValue * 0.4)!,
+                                        Color.lerp(
+                                          Color(0xFF8B5CF6),
+                                          Color(0xFFFFFFFF),
+                                          flashValue * 0.4,
+                                        )!,
+                                        Color.lerp(
+                                          Color(0xFF9333EA),
+                                          Color(0xFFFFFFFF),
+                                          flashValue * 0.4,
+                                        )!,
                                       ]
                                     : [Color(0xFF9CA3AF), Color(0xFF6B7280)],
                                 begin: Alignment.centerLeft,
@@ -249,7 +276,9 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                                 // Add glow during flash
                                 if (flashValue > 0.1)
                                   BoxShadow(
-                                    color: Color(0xFF8B5CF6).withValues(alpha: flashValue * 0.5),
+                                    color: Color(
+                                      0xFF8B5CF6,
+                                    ).withValues(alpha: flashValue * 0.5),
                                     blurRadius: 24 * flashValue,
                                     offset: const Offset(0, 0),
                                   ),
@@ -259,28 +288,35 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 // Show header when enabled and not in loading state
-                                if (isEnabled && !isWaitingForFirstPrediction) ...[
+                                if (isEnabled &&
+                                    !isWaitingForFirstPrediction) ...[
                                   // Animate the "Activity Detected" header for each prediction
                                   ScaleTransition(
                                     scale: _scaleAnimation,
                                     child: Row(
                                       children: [
                                         // Show loader when collecting/waiting, sensor icon when prediction received
-                                        if (recognitionState == RecognitionState.collecting ||
-                                            recognitionState == RecognitionState.waitingForPrediction)
+                                        if (recognitionState ==
+                                                RecognitionState.collecting ||
+                                            recognitionState ==
+                                                RecognitionState
+                                                    .waitingForPrediction)
                                           SizedBox(
                                             width: 16,
                                             height: 16,
                                             child: CircularProgressIndicator(
                                               strokeWidth: 2,
-                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                    Colors.white,
+                                                  ),
                                             ),
                                           )
                                         else
                                           Icon(
                                             Icons.sensors,
                                             color: Colors.white,
-                                            size: 20
+                                            size: 20,
                                           ),
                                         const SizedBox(width: 12),
                                         Text(
@@ -297,72 +333,94 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                                   const SizedBox(height: 8),
                                 ],
                                 if (isEnabled) ...[
-                          // Show special UI for first prediction (only when processing)
-                          if (isWaitingForFirstPrediction) ...[
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                      ),
+                                  // Show special UI for first prediction (only when processing)
+                                  if (isWaitingForFirstPrediction) ...[
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                      Color
+                                                    >(Colors.white),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Text(
+                                              'Processing prediction...',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 32,
+                                          ),
+                                          child: Text(
+                                            'This may take a few seconds',
+                                            style: TextStyle(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.7,
+                                              ),
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(width: 12),
+                                  ] else ...[
+                                    // Show activity name (no animation here, animation is on header)
                                     Text(
-                                      'Processing prediction...',
+                                      currentActivity.displayName,
                                       style: TextStyle(
                                         color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      // Use actual backend reasoning when available (demo mode off)
+                                      // Otherwise use mocked description (demo mode on or no reasoning)
+                                      appState.demoModeEnabled ||
+                                              activityProvider
+                                                  .activityHistory
+                                                  .isEmpty
+                                          ? _getActivityDescription(
+                                              currentActivity,
+                                            )
+                                          : (activityProvider
+                                                    .activityHistory
+                                                    .first
+                                                    .reasoning ??
+                                                _getActivityDescription(
+                                                  currentActivity,
+                                                )),
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.8,
+                                        ),
+                                        fontSize: 14,
                                       ),
                                     ),
                                   ],
-                                ),
-                                const SizedBox(height: 8),
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 32),
-                                  child: Text(
-                                    'This may take a few seconds',
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.7),
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ] else ...[
-                            // Show activity name (no animation here, animation is on header)
-                            Text(
-                              currentActivity.displayName,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              // Use actual backend reasoning when available (demo mode off)
-                              // Otherwise use mocked description (demo mode on or no reasoning)
-                              appState.demoModeEnabled || activityProvider.activityHistory.isEmpty
-                                  ? _getActivityDescription(currentActivity)
-                                  : (activityProvider.activityHistory.first.reasoning ?? _getActivityDescription(currentActivity)),
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
                                 ] else ...[
                                   // Disabled state - show with similar layout to active state
                                   Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Row(
                                         children: [
@@ -386,10 +444,111 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                                       ),
                                       const SizedBox(height: 8),
                                       Text(
-                                        'Enable Activity Recognition in Settings to start tracking',
+                                        'Tap Start below to enable activity tracking',
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.8),
+                                          color: Colors.white.withValues(
+                                            alpha: 0.8,
+                                          ),
                                           fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      // Start button in the disabled card (small style like Stop)
+                                      InkWell(
+                                        onTap: () async {
+                                          // Same logic as settings toggle - fully enable recognition
+                                          final hasPermission =
+                                              await _permissionService
+                                                  .requestSensorPermissions();
+                                          if (!hasPermission) {
+                                            if (mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Sensor permissions are required',
+                                                  ),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            }
+                                            return;
+                                          }
+
+                                          try {
+                                            if (appState.demoModeEnabled) {
+                                              activityProvider.startListening(
+                                                demoMode: true,
+                                              );
+                                            } else {
+                                              await sensorDataProvider
+                                                  .websocketService
+                                                  .connect(
+                                                    appState.websocketUrl,
+                                                  );
+                                              activityProvider.startListening();
+                                              sensorDataProvider
+                                                  .startActivityRecognition();
+                                            }
+                                            await appState
+                                                .setActivityRecognitionEnabled(
+                                                  true,
+                                                );
+                                          } catch (e) {
+                                            if (mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Connection failed: $e',
+                                                  ),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.2,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                            border: Border.all(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.4,
+                                              ),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.play_arrow,
+                                                size: 16,
+                                                color: Colors.white,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                'Start',
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -401,18 +560,18 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                                   thickness: 1,
                                   color: Colors.white.withValues(alpha: 0.2),
                                 ),
-                        const SizedBox(height: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Active Devices',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.75),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+                                const SizedBox(height: 12),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Active Devices',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.75),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
                                     const SizedBox(height: 8),
                                     Wrap(
                                       spacing: 8,
@@ -423,8 +582,12 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                                             vertical: 6,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(8),
+                                            color: Colors.white.withValues(
+                                              alpha: 0.2,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
@@ -451,15 +614,20 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                                               ),
                                               const SizedBox(width: 2),
                                               Consumer<DeviceInfoProvider>(
-                                                builder: (context, deviceInfo, child) {
-                                                  return Text(
-                                                    '${deviceInfo.batteryLevel}%',
-                                                    style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 12,
-                                                    ),
-                                                  );
-                                                },
+                                                builder:
+                                                    (
+                                                      context,
+                                                      deviceInfo,
+                                                      child,
+                                                    ) {
+                                                      return Text(
+                                                        '${deviceInfo.batteryLevel}%',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 12,
+                                                        ),
+                                                      );
+                                                    },
                                               ),
                                             ],
                                           ),
@@ -474,7 +642,8 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                         },
                       ),
                       // Stop button in top-right corner when recognition is active
-                      if (isEnabled && recognitionState != RecognitionState.idle)
+                      if (isEnabled &&
+                          recognitionState != RecognitionState.idle)
                         Positioned(
                           top: 12,
                           right: 12,
@@ -484,7 +653,10 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                               onTap: _toggleRecognition,
                               borderRadius: BorderRadius.circular(20),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.white.withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(20),
@@ -578,10 +750,7 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Color(0xFFE5E7EB),
-                    width: 1,
-                  ),
+                  border: Border.all(color: Color(0xFFE5E7EB), width: 1),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.05),
@@ -656,10 +825,7 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Color(0xFFE5E7EB),
-          width: 1,
-        ),
+        border: Border.all(color: Color(0xFFE5E7EB), width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -685,10 +851,7 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
             children: [
               Text(
                 title,
-                style: TextStyle(
-                  color: Color(0xFF6B7280),
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
               ),
               const SizedBox(height: 4),
               Row(
@@ -710,10 +873,7 @@ class _HomeTabScreenState extends State<HomeTabScreen> with TickerProviderStateM
                     const SizedBox(width: 4),
                     Text(
                       unit,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF6B7280),
-                      ),
+                      style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
                     ),
                   ],
                 ],

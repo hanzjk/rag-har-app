@@ -5,6 +5,7 @@ Uses sliding window approach with RAG-based classifier.
 """
 
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from collections import deque
@@ -27,7 +28,7 @@ class ActivityPredictor:
         step_size: int = 200,
     ):
         """
-        Initialize the activity predictor with non-overlapping windows.
+        Initialize the activity predictor with overlapping windows (50% overlap).
 
         Args:
             classifier: RAGActivityClassifier instance (optional, for real predictions)
@@ -98,6 +99,27 @@ class ActivityPredictor:
         try:
             accel = sensor_data["data"]["accelerometer"]
             gyro = sensor_data["data"]["gyroscope"]
+
+            # Validate no NaN/None values (critical for feature extraction consistency)
+            values = [
+                accel["x"],
+                accel["y"],
+                accel["z"],
+                gyro["x"],
+                gyro["y"],
+                gyro["z"],
+            ]
+            if any(
+                v is None or (isinstance(v, float) and math.isnan(v)) for v in values
+            ):
+                logger.warning("Skipping sample with NaN/None values")
+                return
+
+            # Log timing for first few samples to verify 50Hz sampling
+            if self.samples_received < 5:
+                logger.info(
+                    f"Sample {self.samples_received}: timestamp={sensor_data.get('timestamp')}"
+                )
 
             # Store flattened sensor reading
             sample = {
@@ -198,6 +220,11 @@ class ActivityPredictor:
         self.window.clear()
         self.samples_received = 0
         logger.info("Sliding window reset")
+
+    def reset_prediction_counter(self):
+        """Reset the sample counter for step-based predictions."""
+        self.samples_since_last_prediction = 0
+        logger.info("Prediction counter reset")
 
     def get_window_stats(self) -> Dict[str, Any]:
         """
