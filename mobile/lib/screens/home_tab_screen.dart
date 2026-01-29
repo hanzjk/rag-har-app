@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../providers/activity_provider.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/sensor_data_provider.dart';
@@ -25,6 +27,17 @@ class _HomeTabScreenState extends State<HomeTabScreen>
   bool _hasAutoStarted = false;
   bool _hasReceivedFirstPrediction = false;
   int _predictionCount = 0; // Track number of predictions to trigger animation
+
+  // Live chart data - store last 100 points (2 seconds at 50Hz)
+  final List<double> _accelX = [];
+  final List<double> _accelY = [];
+  final List<double> _accelZ = [];
+  final List<double> _gyroX = [];
+  final List<double> _gyroY = [];
+  final List<double> _gyroZ = [];
+  static const int _maxDataPoints = 100;
+  Timer? _chartDataTimer;
+  bool _chartsExpanded = false;
 
   @override
   void initState() {
@@ -54,7 +67,80 @@ class _HomeTabScreenState extends State<HomeTabScreen>
   void dispose() {
     _activityAnimationController.dispose();
     _cardFlashController.dispose();
+    _stopChartDataPolling();
     super.dispose();
+  }
+
+  void _addSensorData(Map<String, double> accel, Map<String, double> gyro) {
+    setState(() {
+      _accelX.add(accel['x']!);
+      _accelY.add(accel['y']!);
+      _accelZ.add(accel['z']!);
+      _gyroX.add(gyro['x']!);
+      _gyroY.add(gyro['y']!);
+      _gyroZ.add(gyro['z']!);
+
+      if (_accelX.length > _maxDataPoints) {
+        _accelX.removeAt(0);
+        _accelY.removeAt(0);
+        _accelZ.removeAt(0);
+        _gyroX.removeAt(0);
+        _gyroY.removeAt(0);
+        _gyroZ.removeAt(0);
+      }
+    });
+  }
+
+  void _clearSensorData() {
+    setState(() {
+      _accelX.clear();
+      _accelY.clear();
+      _accelZ.clear();
+      _gyroX.clear();
+      _gyroY.clear();
+      _gyroZ.clear();
+    });
+  }
+
+  void _startChartDataPolling() {
+    final sensorDataProvider = context.read<SensorDataProvider>();
+    final appState = context.read<AppStateProvider>();
+    final activityProvider = context.read<ActivityProvider>();
+
+    _chartDataTimer = Timer.periodic(Duration(milliseconds: 50), (timer) {
+      if (!mounted) return;
+
+      if (appState.demoModeEnabled) {
+        // Demo mode - get mock data
+        final mockData = activityProvider.demoService.getMockSensorData();
+        _addSensorData(
+          mockData['accelerometer']!.cast<String, double>(),
+          mockData['gyroscope']!.cast<String, double>(),
+        );
+      } else if (sensorDataProvider.recognitionState == RecognitionState.collecting) {
+        // Real mode - get actual sensor data
+        final latestData = sensorDataProvider.latestData;
+        if (latestData != null) {
+          _addSensorData(
+            {
+              'x': latestData.accelerometer.x,
+              'y': latestData.accelerometer.y,
+              'z': latestData.accelerometer.z,
+            },
+            {
+              'x': latestData.gyroscope.x,
+              'y': latestData.gyroscope.y,
+              'z': latestData.gyroscope.z,
+            },
+          );
+        }
+      }
+    });
+  }
+
+  void _stopChartDataPolling() {
+    _chartDataTimer?.cancel();
+    _chartDataTimer = null;
   }
 
   Future<void> _toggleRecognition() async {
@@ -88,6 +174,9 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       }
 
       try {
+        // Clear previous sensor data and start chart polling
+        _clearSensorData();
+
         // Check if in demo mode
         if (appState.demoModeEnabled) {
           print('🎮 HomeTabScreen: Starting in DEMO mode');
@@ -106,6 +195,9 @@ class _HomeTabScreenState extends State<HomeTabScreen>
           print('✅ HomeTabScreen: All started successfully');
         }
 
+        // Start chart data polling
+        _startChartDataPolling();
+
         await appState.setActivityRecognitionEnabled(true);
       } catch (e) {
         print('❌ HomeTabScreen: Error starting recognition: $e');
@@ -123,6 +215,9 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       print('⏹️ HomeTabScreen: Fully stopping recognition (disabling)');
       sensorDataProvider.stopCollection();
       activityProvider.stopListening();
+
+      // Stop chart data polling
+      _stopChartDataPolling();
 
       // Disconnect WebSocket if motion capture is also disabled
       if (!appState.motionCaptureEnabled) {
@@ -693,6 +788,96 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                 },
               ),
 
+              // Sensor Charts (when activity recognition is running)
+              Consumer2<AppStateProvider, SensorDataProvider>(
+                builder: (context, appState, sensorDataProvider, _) {
+                  final isEnabled = appState.activityRecognitionEnabled;
+                  final recognitionState = sensorDataProvider.recognitionState;
+
+                  // Show charts section when recognition is active
+                  if (isEnabled &&
+                      (recognitionState == RecognitionState.collecting ||
+                       recognitionState == RecognitionState.waitingForPrediction ||
+                       appState.demoModeEnabled)) {
+                    return Column(
+                      children: [
+                        const SizedBox(height: 16),
+                        // Collapsible header
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Color(0xFFE5E7EB), width: 1),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _chartsExpanded = !_chartsExpanded;
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(Icons.show_chart, color: Color(0xFF8B5CF6), size: 20),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Live Sensor Data',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                              color: Color(0xFF111827),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      Icon(
+                                        _chartsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                        color: Color(0xFF9CA3AF),
+                                        size: 20,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (_chartsExpanded) ...[
+                                Divider(height: 1, color: Color(0xFFF3F4F6)),
+                                Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    children: [
+                                      _buildSensorChart('Accelerometer'),
+                                      const SizedBox(height: 16),
+                                      _buildSensorChart('Gyroscope'),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+
+                  return const SizedBox.shrink();
+                },
+              ),
+
               const SizedBox(height: 16),
 
               // Stats Grid
@@ -924,6 +1109,179 @@ class _HomeTabScreenState extends State<HomeTabScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSensorChart(String name) {
+    List<double> xData, yData, zData;
+    double minY, maxY;
+
+    if (name == 'Accelerometer') {
+      xData = _accelX;
+      yData = _accelY;
+      zData = _accelZ;
+      minY = -2.0;
+      maxY = 12.0;
+    } else {
+      xData = _gyroX;
+      yData = _gyroY;
+      zData = _gyroZ;
+      minY = -2.0;
+      maxY = 12.0;
+    }
+
+    List<FlSpot> xSpots = [];
+    List<FlSpot> ySpots = [];
+    List<FlSpot> zSpots = [];
+
+    for (int i = 0; i < xData.length; i++) {
+      xSpots.add(FlSpot(i.toDouble(), xData[i]));
+      ySpots.add(FlSpot(i.toDouble(), yData[i]));
+      zSpots.add(FlSpot(i.toDouble(), zData[i]));
+    }
+
+    if (xSpots.isEmpty || xSpots.length < 10) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              name,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 150,
+              child: Center(
+                child: Text(
+                  'Waiting for data...',
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 150,
+            child: LineChart(
+              LineChartData(
+                minY: minY,
+                maxY: maxY,
+                gridData: FlGridData(show: true, drawVerticalLine: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40)),
+                  bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(show: false),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: xSpots,
+                    isCurved: false,
+                    color: Color(0xFF8B5CF6),
+                    barWidth: 2,
+                    dotData: FlDotData(show: false),
+                  ),
+                  LineChartBarData(
+                    spots: ySpots,
+                    isCurved: false,
+                    color: Color(0xFF10B981),
+                    barWidth: 2,
+                    dotData: FlDotData(show: false),
+                  ),
+                  LineChartBarData(
+                    spots: zSpots,
+                    isCurved: false,
+                    color: Color(0xFF3B82F6),
+                    barWidth: 2,
+                    dotData: FlDotData(show: false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildLegend('X', Color(0xFF8B5CF6)),
+              const SizedBox(width: 16),
+              _buildLegend('Y', Color(0xFF10B981)),
+              const SizedBox(width: 16),
+              _buildLegend('Z', Color(0xFF3B82F6)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegend(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }

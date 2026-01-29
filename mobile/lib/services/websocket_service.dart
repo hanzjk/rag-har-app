@@ -21,6 +21,24 @@ class ActivityPrediction {
     required this.timestamp,
     this.reasoning,
   });
+
+  // JSON serialization for persistence
+  Map<String, dynamic> toJson() => {
+    'activity': activity.name,
+    'timestamp': timestamp.toIso8601String(),
+    'reasoning': reasoning,
+  };
+
+  factory ActivityPrediction.fromJson(Map<String, dynamic> json) {
+    return ActivityPrediction(
+      activity: ActivityType.values.firstWhere(
+        (e) => e.name == json['activity'],
+        orElse: () => ActivityType.unknown,
+      ),
+      timestamp: DateTime.parse(json['timestamp']),
+      reasoning: json['reasoning'],
+    );
+  }
 }
 
 class WebSocketService {
