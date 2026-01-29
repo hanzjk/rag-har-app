@@ -21,22 +21,25 @@ Mobile App (activity + reasoning)
 har-demo/
 ├── mobile/              # Flutter Android app
 │   ├── lib/
+│   │   ├── models/     # SensorData, ActivityType
 │   │   ├── providers/  # State management (Provider pattern)
-│   │   ├── services/   # Sensors, WebSocket, permissions
-│   │   ├── screens/    # Data collection, Activity recognition, Settings
+│   │   ├── services/   # Sensors, WebSocket, permissions, orientation normalizer
+│   │   ├── screens/    # Home, Data collection, Workouts, Progress, Settings
 │   │   └── widgets/    # UI components
 │   └── pubspec.yaml
 │
 ├── server/             # Python WebSocket server + RAG pipeline
-│   ├── websocket_server.py     # WebSocket handler
-│   ├── data_collector.py       # Save labeled sensor data
-│   ├── activity_predictor.py   # Sliding window + RAG classifier
-│   ├── rag-har/                # RAG pipeline
-│   │   ├── preprocessing.py    # Train/test split
-│   │   ├── features.py         # Statistical feature extraction
+│   ├── websocket_server.py      # WebSocket handler
+│   ├── data_collector.py        # Save labeled sensor data
+│   ├── activity_predictor.py    # Sliding window + RAG classifier
+│   ├── rag_har_pipeline.py      # Pipeline orchestrator
+│   ├── prediction_data_logger.py # Log predictions for analysis
+│   ├── rag-har/                 # RAG pipeline modules
+│   │   ├── preprocessing.py     # Train/test split, windowing
+│   │   ├── features.py          # Statistical feature extraction
+│   │   ├── feature_utils.py     # Common feature utilities
 │   │   ├── timeseries_indexing.py  # Vector database indexing
-│   │   ├── classifier.py       # RAG-based classifier
-│   │   └── rag_pipeline.py     # End-to-end pipeline
+│   │   └── classifier.py        # RAG-based classifier
 │   └── requirements.txt
 │
 └── CLAUDE.md          # Development guide
@@ -54,6 +57,10 @@ har-demo/
   - Window-based collection (200 samples = 4 seconds)
   - Activity display with LLM reasoning
   - History tracking
+
+- **Orientation Normalization**: Sensor data transformed to world frame
+  - Gravity-based rotation to orientation-independent coordinates
+  - Consistent feature extraction regardless of device orientation
 
 - **Demo Mode**: Test without physical sensors (works on emulators)
 
@@ -100,6 +107,8 @@ export ZILLIZ_CLOUD_API_KEY="your-key"
 
 # Run server
 python websocket_server.py
+
+
 ```
 
 Server runs on `ws://0.0.0.0:8000`
@@ -136,7 +145,7 @@ ws://YOUR_LOCAL_IP:8000/ws
 
 1. Open app → Data Collection
 2. Select activity label
-3. Tap Start, perform activity for 10-20 seconds
+3. Tap Start, perform activity for 1-2 mins
 4. Tap Stop (triggers RAG pipeline automatically)
 5. Server processes and indexes data to vector database
 
@@ -220,10 +229,8 @@ ws://YOUR_LOCAL_IP:8000/ws
 - **Server**: Python, websockets, asyncio
 - **RAG**: LangChain, OpenAI (embeddings + GPT-5-mini)
 - **Vector DB**: Milvus/Zilliz Cloud
-- **Features**: pandas, numpy (statistical feature extraction)
+- **Features**: pandas, numpy, scipy (statistical feature extraction)
 
 ## Development
-
-For detailed development guide, see [CLAUDE.md](CLAUDE.md).
 
 For server-specific documentation, see [server/README.md](server/README.md).

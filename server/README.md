@@ -16,13 +16,15 @@ Python WebSocket server for Human Activity Recognition (HAR) with two modes:
 
 ```
 server/
-├── websocket_server.py       # WebSocket server (handles connections)
+├── websocket_server.py        # WebSocket server (handles connections)
 ├── data_collector.py          # Saves sensor data to CSV
 ├── activity_predictor.py      # Real-time prediction wrapper
-└── rag-har/                   # RAG-HAR pipeline
-    ├── rag_pipeline.py        # Pipeline orchestrator
+├── rag_har_pipeline.py        # Pipeline orchestrator
+├── prediction_data_logger.py  # Log predictions for analysis
+└── rag-har/                   # RAG-HAR pipeline modules
     ├── preprocessing.py       # Windowing & train/test split
     ├── features.py            # Statistical feature extraction
+    ├── feature_utils.py       # Common feature utilities
     ├── timeseries_indexing.py # Vector database indexing
     └── classifier.py          # RAG classifier & evaluation
 ```
@@ -126,8 +128,12 @@ Mobile app sends `predict_activity` messages → Server uses RAG classifier:
 
 Process collected data:
 ```bash
-cd rag-har
-python rag_pipeline.py
+python rag_har_pipeline.py
+```
+
+Force recreate the vector database (clears existing data):
+```bash
+python rag_har_pipeline.py --force-recreate
 ```
 
 Evaluate classifier on test set:

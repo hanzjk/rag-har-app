@@ -323,7 +323,14 @@ class RAGActivityClassifier:
         retrieved_data = "\n\n".join(sections)
         classes_str = str(self.valid_labels)
 
-        system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str} and one sentence long reasoning."""
+        system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str}. 
+        Provide a short explanation (2–3 sentences) using ONLY human-friendly motion descriptions.
+Explanation rules:
+- Use only: movement intensity (low/moderate/high), rhythm (steady/repeating/irregular), phone rotation (stable/some/frequent), and overall body movement.
+- Do NOT mention statistics, axes, gravity alignment, standard deviation, mean, variance, frequency, “near zero”, or any numbers.
+- Do NOT copy phrases from the input; translate them into everyday language.
+- Keep it suitable for a mobile UI.
+"""
         series = (
             f"[Whole Segment]:\n{whole_stats}\n"
             f"[Start Segment]:\n{start_stats}\n"
@@ -569,11 +576,7 @@ class RAGActivityClassifier:
 
                 # Calculate per-class F1 score
                 class_f1 = f1_score(
-                    y_true,
-                    y_pred,
-                    labels=[label],
-                    average='macro',
-                    zero_division=0
+                    y_true, y_pred, labels=[label], average="macro", zero_division=0
                 )
 
                 per_class_metrics[label] = {
