@@ -123,6 +123,13 @@ flutter pub get
 
 # Run app
 flutter run
+
+# Build apk
+flutter build apk --release 
+# Connect the mobile phone with a wired connection
+adb install build/app/outputs/flutter-apk/app-release.apk 
+or
+adb push build/app/outputs/flutter-apk/app-release.apk /sdcard/Download/
 ```
 
 ### 3. Configure Connection
