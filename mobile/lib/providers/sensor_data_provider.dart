@@ -204,7 +204,17 @@ class SensorDataProvider extends ChangeNotifier {
     notifyListeners();
 
     _subscription = _sensorService.getSensorStream().listen((data) {
-      // For activity recognition mode, stop after window size
+      // Always update latestData for chart display
+      final labeledData = SensorData(
+        timestamp: data.timestamp,
+        accelerometer: data.accelerometer,
+        gyroscope: data.gyroscope,
+        activityLabel: _currentActivityLabel,
+        messageType: _currentMessageType,
+      );
+      _latestData = labeledData;
+
+      // For activity recognition mode, check if window is complete
       if (_currentMessageType == 'predict_activity' &&
           _samplesInCurrentWindow >= _windowSize) {
         // Only transition to waiting state if not already waiting or received
@@ -224,23 +234,13 @@ class SensorDataProvider extends ChangeNotifier {
               _websocketService.sendPing();
             }
           });
-
-          notifyListeners();
         }
-        // Don't process more data once window is complete
+        // Don't send to server, just notify for chart updates
+        notifyListeners();
         return;
       }
 
-      // Create new SensorData with activity label and message type
-      final labeledData = SensorData(
-        timestamp: data.timestamp,
-        accelerometer: data.accelerometer,
-        gyroscope: data.gyroscope,
-        activityLabel: _currentActivityLabel,
-        messageType: _currentMessageType,
-      );
-
-      _latestData = labeledData;
+      // Send to server only during active collection
       _websocketService.sendSensorData(labeledData);
       _packetsSent++;
 

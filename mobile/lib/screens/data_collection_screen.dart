@@ -810,15 +810,13 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
       xData = _accelX;
       yData = _accelY;
       zData = _accelZ;
-      // Accelerometer range: Y is around 9.81, X and Z are smaller
-      minY = -2.0;
+      minY = -12.0;
       maxY = 12.0;
     } else {
       xData = _gyroX;
       yData = _gyroY;
       zData = _gyroZ;
-      // Gyroscope range: use same scale as accelerometer for visual comparison
-      minY = -2.0;
+      minY = -12.0;
       maxY = 12.0;
     }
 

@@ -38,6 +38,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
   static const int _maxDataPoints = 100;
   Timer? _chartDataTimer;
   bool _chartsExpanded = false;
+  DateTime? _lastChartDataTimestamp; // Track last added data to avoid duplicates
 
   @override
   void initState() {
@@ -88,6 +89,11 @@ class _HomeTabScreenState extends State<HomeTabScreen>
         _gyroY.removeAt(0);
         _gyroZ.removeAt(0);
       }
+
+      // Debug: log when data is first added
+      if (_accelX.length == 1) {
+        print('📈 First chart data point added!');
+      }
     });
   }
 
@@ -99,6 +105,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       _gyroX.clear();
       _gyroY.clear();
       _gyroZ.clear();
+      _lastChartDataTimestamp = null;
     });
   }
 
@@ -107,8 +114,20 @@ class _HomeTabScreenState extends State<HomeTabScreen>
     final appState = context.read<AppStateProvider>();
     final activityProvider = context.read<ActivityProvider>();
 
+    print('📊 Chart polling started');
+
+    int _pollCount = 0;
     _chartDataTimer = Timer.periodic(Duration(milliseconds: 50), (timer) {
       if (!mounted) return;
+
+      _pollCount++;
+      final currentState = sensorDataProvider.recognitionState;
+      final latestData = sensorDataProvider.latestData;
+
+      // Log every 40 polls (2 seconds)
+      if (_pollCount % 40 == 0) {
+        print('📊 Poll #$_pollCount: state=$currentState, hasData=${latestData != null}, chartPoints=${_accelX.length}');
+      }
 
       if (appState.demoModeEnabled) {
         // Demo mode - get mock data
@@ -117,10 +136,11 @@ class _HomeTabScreenState extends State<HomeTabScreen>
           mockData['accelerometer']!.cast<String, double>(),
           mockData['gyroscope']!.cast<String, double>(),
         );
-      } else if (sensorDataProvider.recognitionState == RecognitionState.collecting) {
-        // Real mode - get actual sensor data
-        final latestData = sensorDataProvider.latestData;
-        if (latestData != null) {
+      } else if (currentState != RecognitionState.idle) {
+        // Real mode - get actual sensor data (any active state except idle)
+        // Only add if we have new data (different timestamp)
+        if (latestData != null && latestData.timestamp != _lastChartDataTimestamp) {
+          _lastChartDataTimestamp = latestData.timestamp;
           _addSensorData(
             {
               'x': latestData.accelerometer.x,
@@ -133,6 +153,10 @@ class _HomeTabScreenState extends State<HomeTabScreen>
               'z': latestData.gyroscope.z,
             },
           );
+          // Debug: log chart data count periodically
+          if (_accelX.length % 20 == 0) {
+            print('📈 Chart data points: ${_accelX.length}, state: $currentState');
+          }
         }
       }
     });
@@ -173,10 +197,16 @@ class _HomeTabScreenState extends State<HomeTabScreen>
         return;
       }
 
-      try {
-        // Clear previous sensor data and start chart polling
-        _clearSensorData();
+      // Clear previous sensor data and expand charts
+      _clearSensorData();
+      setState(() {
+        _chartsExpanded = true;
+      });
 
+      // Start chart data polling BEFORE connection attempt
+      _startChartDataPolling();
+
+      try {
         // Check if in demo mode
         if (appState.demoModeEnabled) {
           print('🎮 HomeTabScreen: Starting in DEMO mode');
@@ -195,12 +225,10 @@ class _HomeTabScreenState extends State<HomeTabScreen>
           print('✅ HomeTabScreen: All started successfully');
         }
 
-        // Start chart data polling
-        _startChartDataPolling();
-
         await appState.setActivityRecognitionEnabled(true);
       } catch (e) {
         print('❌ HomeTabScreen: Error starting recognition: $e');
+        // Keep chart polling running - user can retry connection
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -550,61 +578,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                       const SizedBox(height: 16),
                                       // Start button in the disabled card (small style like Stop)
                                       InkWell(
-                                        onTap: () async {
-                                          // Same logic as settings toggle - fully enable recognition
-                                          final hasPermission =
-                                              await _permissionService
-                                                  .requestSensorPermissions();
-                                          if (!hasPermission) {
-                                            if (mounted) {
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text(
-                                                    'Sensor permissions are required',
-                                                  ),
-                                                  backgroundColor: Colors.red,
-                                                ),
-                                              );
-                                            }
-                                            return;
-                                          }
-
-                                          try {
-                                            if (appState.demoModeEnabled) {
-                                              activityProvider.startListening(
-                                                demoMode: true,
-                                              );
-                                            } else {
-                                              await sensorDataProvider
-                                                  .websocketService
-                                                  .connect(
-                                                    appState.websocketUrl,
-                                                  );
-                                              activityProvider.startListening();
-                                              sensorDataProvider
-                                                  .startActivityRecognition();
-                                            }
-                                            await appState
-                                                .setActivityRecognitionEnabled(
-                                                  true,
-                                                );
-                                          } catch (e) {
-                                            if (mounted) {
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    'Connection failed: $e',
-                                                  ),
-                                                  backgroundColor: Colors.red,
-                                                ),
-                                              );
-                                            }
-                                          }
-                                        },
+                                        onTap: _toggleRecognition,
                                         borderRadius: BorderRadius.circular(20),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(
@@ -794,10 +768,9 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                   final isEnabled = appState.activityRecognitionEnabled;
                   final recognitionState = sensorDataProvider.recognitionState;
 
-                  // Show charts section when recognition is active
+                  // Show charts section when recognition is active (any state except idle)
                   if (isEnabled &&
-                      (recognitionState == RecognitionState.collecting ||
-                       recognitionState == RecognitionState.waitingForPrediction ||
+                      (recognitionState != RecognitionState.idle ||
                        appState.demoModeEnabled)) {
                     return Column(
                       children: [
@@ -1120,13 +1093,13 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       xData = _accelX;
       yData = _accelY;
       zData = _accelZ;
-      minY = -2.0;
+      minY = -12.0;
       maxY = 12.0;
     } else {
       xData = _gyroX;
       yData = _gyroY;
       zData = _gyroZ;
-      minY = -2.0;
+      minY = -12.0;
       maxY = 12.0;
     }
 

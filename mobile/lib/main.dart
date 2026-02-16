@@ -83,6 +83,7 @@ class _MyAppState extends State<MyApp> {
       ],
       child: MaterialApp(
         title: 'FitTrack',
+        debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
             seedColor: const Color(0xFF2563EB),
