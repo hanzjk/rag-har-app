@@ -23,7 +23,7 @@ class _MyAppState extends State<MyApp> {
   // Create services once and reuse them
   final WebSocketService _websocketService = WebSocketService();
   final AppStateProvider _appStateProvider = AppStateProvider();
-  final SensorService _sensorService = SensorService();
+  final SensorService _sensorService = SensorService(normalizeOrientation: false);
   late final ActivityProvider _activityProvider = ActivityProvider(websocketService: _websocketService);
 
   @override
