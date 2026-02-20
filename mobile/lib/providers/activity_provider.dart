@@ -25,9 +25,17 @@ class ActivityProvider extends ChangeNotifier {
   DemoService get demoService => _demoService;
   bool get isListening => _subscription != null;
 
+  // Callback to get sensor data when prediction arrives
+  List<SensorSnapshot> Function()? _sensorDataCallback;
+
   ActivityProvider({required WebSocketService websocketService})
       : _websocketService = websocketService {
     _loadHistory();
+  }
+
+  // Set callback to capture sensor data when predictions arrive
+  void setSensorDataCallback(List<SensorSnapshot> Function()? callback) {
+    _sensorDataCallback = callback;
   }
 
   // Load history from shared_preferences
@@ -100,7 +108,22 @@ class ActivityProvider extends ChangeNotifier {
         print('🎉 ActivityProvider: Received prediction - ${prediction.activity.displayName}');
         _currentActivity = prediction.activity;
 
-        _activityHistory.insert(0, prediction);
+        // Capture sensor data if callback is set
+        List<SensorSnapshot>? sensorData;
+        if (_sensorDataCallback != null) {
+          sensorData = _sensorDataCallback!();
+        }
+
+        // Create prediction with sensor data
+        final predictionWithSensor = ActivityPrediction(
+          activity: prediction.activity,
+          timestamp: prediction.timestamp,
+          reasoning: prediction.reasoning,
+          fastInference: prediction.fastInference,
+          sensorData: sensorData,
+        );
+
+        _activityHistory.insert(0, predictionWithSensor);
 
         if (_activityHistory.length > AppConstants.maxActivityHistory) {
           _activityHistory.removeLast();

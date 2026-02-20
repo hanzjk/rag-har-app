@@ -8,6 +8,7 @@ import '../providers/sensor_data_provider.dart';
 import '../providers/device_info_provider.dart';
 import '../models/activity_type.dart';
 import '../services/permission_service.dart';
+import '../services/websocket_service.dart';
 
 class HomeTabScreen extends StatefulWidget {
   const HomeTabScreen({super.key});
@@ -109,6 +110,23 @@ class _HomeTabScreenState extends State<HomeTabScreen>
     });
   }
 
+  // Get current sensor data as snapshots for storing with predictions
+  List<SensorSnapshot> _getSensorSnapshots() {
+    final snapshots = <SensorSnapshot>[];
+    final length = _accelX.length;
+    for (int i = 0; i < length; i++) {
+      snapshots.add(SensorSnapshot(
+        accelX: _accelX[i],
+        accelY: _accelY[i],
+        accelZ: _accelZ[i],
+        gyroX: i < _gyroX.length ? _gyroX[i] : 0.0,
+        gyroY: i < _gyroY.length ? _gyroY[i] : 0.0,
+        gyroZ: i < _gyroZ.length ? _gyroZ[i] : 0.0,
+      ));
+    }
+    return snapshots;
+  }
+
   void _startChartDataPolling() {
     final sensorDataProvider = context.read<SensorDataProvider>();
     final appState = context.read<AppStateProvider>();
@@ -206,6 +224,11 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       // Start chart data polling BEFORE connection attempt
       _startChartDataPolling();
 
+      // Set up sensor data callback to capture data with predictions
+      activityProvider.setSensorDataCallback(() {
+        return _getSensorSnapshots();
+      });
+
       try {
         // Check if in demo mode
         if (appState.demoModeEnabled) {
@@ -243,6 +266,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       print('⏹️ HomeTabScreen: Fully stopping recognition (disabling)');
       sensorDataProvider.stopCollection();
       activityProvider.stopListening();
+      activityProvider.setSensorDataCallback(null); // Clear sensor callback
 
       // Stop chart data polling
       _stopChartDataPolling();

@@ -11,17 +11,50 @@ enum ConnectionState {
   error,
 }
 
+// Sensor data snapshot for a single point in time
+class SensorSnapshot {
+  final double accelX, accelY, accelZ;
+  final double gyroX, gyroY, gyroZ;
+
+  SensorSnapshot({
+    required this.accelX,
+    required this.accelY,
+    required this.accelZ,
+    required this.gyroX,
+    required this.gyroY,
+    required this.gyroZ,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'ax': accelX, 'ay': accelY, 'az': accelZ,
+    'gx': gyroX, 'gy': gyroY, 'gz': gyroZ,
+  };
+
+  factory SensorSnapshot.fromJson(Map<String, dynamic> json) {
+    return SensorSnapshot(
+      accelX: (json['ax'] as num).toDouble(),
+      accelY: (json['ay'] as num).toDouble(),
+      accelZ: (json['az'] as num).toDouble(),
+      gyroX: (json['gx'] as num).toDouble(),
+      gyroY: (json['gy'] as num).toDouble(),
+      gyroZ: (json['gz'] as num).toDouble(),
+    );
+  }
+}
+
 class ActivityPrediction {
   final ActivityType activity;
   final DateTime timestamp;
   final String? reasoning;
   final bool fastInference;
+  final List<SensorSnapshot>? sensorData; // Sensor data window for this prediction
 
   ActivityPrediction({
     required this.activity,
     required this.timestamp,
     this.reasoning,
     this.fastInference = false,
+    this.sensorData,
   });
 
   // JSON serialization for persistence
@@ -30,9 +63,16 @@ class ActivityPrediction {
     'timestamp': timestamp.toIso8601String(),
     'reasoning': reasoning,
     'fast_inference': fastInference,
+    'sensor_data': sensorData?.map((s) => s.toJson()).toList(),
   };
 
   factory ActivityPrediction.fromJson(Map<String, dynamic> json) {
+    List<SensorSnapshot>? sensorData;
+    if (json['sensor_data'] != null) {
+      sensorData = (json['sensor_data'] as List)
+          .map((s) => SensorSnapshot.fromJson(s))
+          .toList();
+    }
     return ActivityPrediction(
       activity: ActivityType.values.firstWhere(
         (e) => e.name == json['activity'],
@@ -41,6 +81,7 @@ class ActivityPrediction {
       timestamp: DateTime.parse(json['timestamp']),
       reasoning: json['reasoning'],
       fastInference: json['fast_inference'] ?? false,
+      sensorData: sensorData,
     );
   }
 }

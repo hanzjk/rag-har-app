@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 enum ActivityType {
   walking,
   running,
@@ -44,6 +46,46 @@ enum ActivityType {
         return 'Jumping';
       case ActivityType.unknown:
         return 'Unknown';
+    }
+  }
+
+  // Short name for chart markers (max 4 chars)
+  String get shortName {
+    switch (this) {
+      case ActivityType.walking:
+        return 'Walk';
+      case ActivityType.running:
+        return 'Run';
+      case ActivityType.sitting:
+        return 'Sit';
+      case ActivityType.standing:
+        return 'Stand';
+      case ActivityType.lying:
+        return 'Lie';
+      case ActivityType.jumping:
+        return 'Jump';
+      case ActivityType.unknown:
+        return '?';
+    }
+  }
+
+  // Color for activity type (used in charts and markers)
+  Color get color {
+    switch (this) {
+      case ActivityType.walking:
+        return const Color(0xFF3B82F6); // Blue
+      case ActivityType.running:
+        return const Color(0xFFEF4444); // Red
+      case ActivityType.sitting:
+        return const Color(0xFF10B981); // Green
+      case ActivityType.standing:
+        return const Color(0xFF8B5CF6); // Purple
+      case ActivityType.lying:
+        return const Color(0xFF6366F1); // Indigo
+      case ActivityType.jumping:
+        return const Color(0xFFF59E0B); // Amber
+      case ActivityType.unknown:
+        return const Color(0xFF6B7280); // Gray
     }
   }
 }

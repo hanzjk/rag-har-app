@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../providers/activity_provider.dart';
 import '../models/activity_type.dart';
 import '../services/websocket_service.dart';
@@ -294,7 +295,14 @@ class ProgressScreen extends StatelessWidget {
                               ),
                             ),
                           )
-                        else
+                        else ...[
+                          // Activity Timeline Chart
+                          _buildActivityTimeline(history),
+                          const SizedBox(height: 16),
+                          Divider(height: 1, color: Colors.grey[200]),
+                          const SizedBox(height: 8),
+                        ],
+                        if (history.isNotEmpty)
                           ListView.separated(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
@@ -380,6 +388,355 @@ class ProgressScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildActivityTimeline(List<ActivityPrediction> history) {
+    // Get predictions with sensor data (reversed to show oldest first)
+    final predictionsWithData = history
+        .where((p) => p.sensorData != null && p.sensorData!.isNotEmpty)
+        .take(10)
+        .toList()
+        .reversed
+        .toList();
+
+    if (predictionsWithData.isEmpty) {
+      // Fall back to simple activity timeline if no sensor data
+      return _buildSimpleActivityTimeline(history);
+    }
+
+    // Combine sensor data from all predictions
+    final List<double> accelX = [];
+    final List<double> accelY = [];
+    final List<double> accelZ = [];
+    final List<double> gyroX = [];
+    final List<double> gyroY = [];
+    final List<double> gyroZ = [];
+    final List<_ActivityMarker> markers = [];
+
+    int currentIndex = 0;
+    for (final prediction in predictionsWithData) {
+      // Add marker at the start of this prediction's data
+      markers.add(_ActivityMarker(
+        index: currentIndex,
+        activity: prediction.activity,
+        timestamp: prediction.timestamp,
+      ));
+
+      // Add sensor data
+      for (final snapshot in prediction.sensorData!) {
+        accelX.add(snapshot.accelX);
+        accelY.add(snapshot.accelY);
+        accelZ.add(snapshot.accelZ);
+        gyroX.add(snapshot.gyroX);
+        gyroY.add(snapshot.gyroY);
+        gyroZ.add(snapshot.gyroZ);
+        currentIndex++;
+      }
+    }
+
+    if (accelX.isEmpty) {
+      return _buildSimpleActivityTimeline(history);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.show_chart, size: 16, color: Color(0xFF3B82F6)),
+            const SizedBox(width: 6),
+            Text(
+              'Sensor Data with Activity Markers',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF6B7280),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Accelerometer chart
+        _buildSensorChartWithMarkers(
+          'Accelerometer',
+          accelX, accelY, accelZ,
+          markers,
+          -20, 20,
+        ),
+        const SizedBox(height: 12),
+        // Gyroscope chart
+        _buildSensorChartWithMarkers(
+          'Gyroscope',
+          gyroX, gyroY, gyroZ,
+          markers,
+          -10, 10,
+        ),
+        const SizedBox(height: 8),
+        // Activity legend
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          children: ActivityType.values
+              .where((a) => a != ActivityType.unknown)
+              .map((activity) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: activity.color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        activity.shortName,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ))
+              .toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSensorChartWithMarkers(
+    String title,
+    List<double> xData,
+    List<double> yData,
+    List<double> zData,
+    List<_ActivityMarker> markers,
+    double minY,
+    double maxY,
+  ) {
+    final xSpots = <FlSpot>[];
+    final ySpots = <FlSpot>[];
+    final zSpots = <FlSpot>[];
+
+    for (int i = 0; i < xData.length; i++) {
+      xSpots.add(FlSpot(i.toDouble(), xData[i].clamp(minY, maxY)));
+      ySpots.add(FlSpot(i.toDouble(), yData[i].clamp(minY, maxY)));
+      zSpots.add(FlSpot(i.toDouble(), zData[i].clamp(minY, maxY)));
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 120,
+            child: LineChart(
+              LineChartData(
+                minY: minY,
+                maxY: maxY,
+                minX: 0,
+                maxX: xData.length.toDouble() - 1,
+                gridData: FlGridData(show: true, drawVerticalLine: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 35),
+                  ),
+                  bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(show: false),
+                extraLinesData: ExtraLinesData(
+                  verticalLines: markers.map((marker) => VerticalLine(
+                    x: marker.index.toDouble(),
+                    color: marker.activity.color.withValues(alpha: 0.8),
+                    strokeWidth: 2,
+                    dashArray: [4, 4],
+                    label: VerticalLineLabel(
+                      show: true,
+                      alignment: Alignment.topCenter,
+                      padding: const EdgeInsets.only(bottom: 2),
+                      style: TextStyle(
+                        color: marker.activity.color,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      labelResolver: (_) => marker.activity.shortName,
+                    ),
+                  )).toList(),
+                ),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: xSpots,
+                    isCurved: false,
+                    color: Color(0xFF8B5CF6),
+                    barWidth: 1.5,
+                    dotData: FlDotData(show: false),
+                  ),
+                  LineChartBarData(
+                    spots: ySpots,
+                    isCurved: false,
+                    color: Color(0xFF10B981),
+                    barWidth: 1.5,
+                    dotData: FlDotData(show: false),
+                  ),
+                  LineChartBarData(
+                    spots: zSpots,
+                    isCurved: false,
+                    color: Color(0xFF3B82F6),
+                    barWidth: 1.5,
+                    dotData: FlDotData(show: false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildAxisLegend('X', Color(0xFF8B5CF6)),
+              const SizedBox(width: 12),
+              _buildAxisLegend('Y', Color(0xFF10B981)),
+              const SizedBox(width: 12),
+              _buildAxisLegend('Z', Color(0xFF3B82F6)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAxisLegend(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  Widget _buildSimpleActivityTimeline(List<ActivityPrediction> history) {
+    final timelineData = history.take(20).toList().reversed.toList();
+
+    if (timelineData.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.timeline, size: 16, color: Color(0xFF6B7280)),
+            const SizedBox(width: 6),
+            Text(
+              'Activity Timeline',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF6B7280),
+              ),
+            ),
+            const Spacer(),
+            Text(
+              'Last ${timelineData.length} predictions',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey[400],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 100,
+          child: LineChart(
+            LineChartData(
+              minY: 0,
+              maxY: ActivityType.values.length.toDouble() - 1,
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                horizontalInterval: 1,
+              ),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 45,
+                    getTitlesWidget: (value, meta) {
+                      final index = value.toInt();
+                      if (index < 0 || index >= ActivityType.values.length) {
+                        return const SizedBox.shrink();
+                      }
+                      final activity = ActivityType.values[index];
+                      if (activity == ActivityType.unknown) {
+                        return const SizedBox.shrink();
+                      }
+                      return Text(
+                        activity.shortName,
+                        style: TextStyle(fontSize: 9, color: activity.color),
+                      );
+                    },
+                  ),
+                ),
+                bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+              borderData: FlBorderData(show: false),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: timelineData.asMap().entries.map((entry) {
+                    return FlSpot(
+                      entry.key.toDouble(),
+                      entry.value.activity.index.toDouble(),
+                    );
+                  }).toList(),
+                  isCurved: false,
+                  isStepLineChart: true,
+                  color: Color(0xFF3B82F6),
+                  barWidth: 2,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (spot, percent, bar, index) {
+                      final activity = ActivityType.values[spot.y.toInt()];
+                      return FlDotCirclePainter(
+                        radius: 4,
+                        color: activity.color,
+                        strokeWidth: 1.5,
+                        strokeColor: Colors.white,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -476,4 +833,17 @@ class ProgressScreen extends StatelessWidget {
         return Color(0xFF6B7280);
     }
   }
+}
+
+// Helper class for activity markers on sensor charts
+class _ActivityMarker {
+  final int index;
+  final ActivityType activity;
+  final DateTime timestamp;
+
+  _ActivityMarker({
+    required this.index,
+    required this.activity,
+    required this.timestamp,
+  });
 }
