@@ -181,9 +181,12 @@ async def handle_client(websocket):
                         client_predictor.reset_prediction_counter()
                         prediction_session_active = True
 
+                    # Extract fast_inference flag from the message
+                    fast_inference = data.get("fast_inference", False)
+
                     # Predict activity using client-specific predictor
                     # Returns None if not at step boundary (step_size feature)
-                    prediction = client_predictor.predict(data)
+                    prediction = client_predictor.predict(data, fast_inference=fast_inference)
 
                     # Only send prediction if one was generated (not None)
                     if prediction is not None:

@@ -37,6 +37,7 @@ class SensorDataProvider extends ChangeNotifier {
   Timer? _autoContinueTimer;
   Timer? _keepAliveTimer; // Keep WebSocket alive during long predictions
   bool _continuousMode = true; // Enable continuous predictions by default
+  bool _fastInference = false; // Enable faster inference with simpler prompts
 
   SensorData? get latestData => _latestData;
   bool get isCollecting => _isCollecting;
@@ -57,6 +58,7 @@ class SensorDataProvider extends ChangeNotifier {
   bool get isPredictionReceived =>
       _recognitionState == RecognitionState.predictionReceived;
   bool get continuousMode => _continuousMode;
+  bool get fastInference => _fastInference;
 
   Duration get collectionDuration {
     if (_collectionStartTime == null) return Duration.zero;
@@ -76,6 +78,11 @@ class SensorDataProvider extends ChangeNotifier {
 
   void setContinuousMode(bool enabled) {
     _continuousMode = enabled;
+    notifyListeners();
+  }
+
+  void setFastInference(bool enabled) {
+    _fastInference = enabled;
     notifyListeners();
   }
 
@@ -211,6 +218,7 @@ class SensorDataProvider extends ChangeNotifier {
         gyroscope: data.gyroscope,
         activityLabel: _currentActivityLabel,
         messageType: _currentMessageType,
+        fastInference: _fastInference,
       );
       _latestData = labeledData;
 

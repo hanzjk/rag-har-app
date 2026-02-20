@@ -15,11 +15,13 @@ class ActivityPrediction {
   final ActivityType activity;
   final DateTime timestamp;
   final String? reasoning;
+  final bool fastInference;
 
   ActivityPrediction({
     required this.activity,
     required this.timestamp,
     this.reasoning,
+    this.fastInference = false,
   });
 
   // JSON serialization for persistence
@@ -27,6 +29,7 @@ class ActivityPrediction {
     'activity': activity.name,
     'timestamp': timestamp.toIso8601String(),
     'reasoning': reasoning,
+    'fast_inference': fastInference,
   };
 
   factory ActivityPrediction.fromJson(Map<String, dynamic> json) {
@@ -37,6 +40,7 @@ class ActivityPrediction {
       ),
       timestamp: DateTime.parse(json['timestamp']),
       reasoning: json['reasoning'],
+      fastInference: json['fast_inference'] ?? false,
     );
   }
 }
@@ -150,6 +154,7 @@ class WebSocketService {
 
       String? activity;
       String? reasoning;
+      bool fastInference = false;
 
       if (data['type'] == 'activity_prediction') {
         // Skip buffering/initializing predictions
@@ -163,18 +168,21 @@ class WebSocketService {
 
         activity = activityName;
         reasoning = data['reasoning'];  // Extract reasoning if present
+        fastInference = data['fast_inference'] ?? false;
       } else if (data.containsKey('prediction')) {
         activity = data['prediction'];
         reasoning = data['reasoning'];  // Extract reasoning if present
+        fastInference = data['fast_inference'] ?? false;
       }
 
       if (activity != null) {
-        print('🎯 Adding prediction to activityStream: $activity (reasoning: ${reasoning?.substring(0, reasoning.length > 50 ? 50 : reasoning.length)}...)');
+        print('🎯 Adding prediction to activityStream: $activity (fastInference: $fastInference, reasoning: ${reasoning?.substring(0, reasoning.length > 50 ? 50 : reasoning.length)}...)');
         _activityController.add(
           ActivityPrediction(
             activity: ActivityType.fromString(activity),
             timestamp: DateTime.now(),
             reasoning: reasoning,
+            fastInference: fastInference,
           ),
         );
         print('✅ Prediction added to activityStream');

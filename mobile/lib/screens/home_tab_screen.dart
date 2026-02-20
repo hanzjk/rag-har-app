@@ -513,31 +513,35 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      // Use actual backend reasoning when available (demo mode off)
-                                      // Otherwise use mocked description (demo mode on or no reasoning)
-                                      appState.demoModeEnabled ||
-                                              activityProvider
-                                                  .activityHistory
-                                                  .isEmpty
-                                          ? _getActivityDescription(
-                                              currentActivity,
-                                            )
-                                          : (activityProvider
+                                    // Hide description in fast inference mode
+                                    if (activityProvider.activityHistory.isEmpty ||
+                                        !activityProvider.activityHistory.first.fastInference) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        // Use actual backend reasoning when available (demo mode off)
+                                        // Otherwise use mocked description (demo mode on or no reasoning)
+                                        appState.demoModeEnabled ||
+                                                activityProvider
                                                     .activityHistory
-                                                    .first
-                                                    .reasoning ??
-                                                _getActivityDescription(
-                                                  currentActivity,
-                                                )),
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.8,
+                                                    .isEmpty
+                                            ? _getActivityDescription(
+                                                currentActivity,
+                                              )
+                                            : (activityProvider
+                                                      .activityHistory
+                                                      .first
+                                                      .reasoning ??
+                                                  _getActivityDescription(
+                                                    currentActivity,
+                                                  )),
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.8,
+                                          ),
+                                          fontSize: 14,
                                         ),
-                                        fontSize: 14,
                                       ),
-                                    ),
+                                    ],
                                   ],
                                 ] else ...[
                                   // Disabled state - show with similar layout to active state
@@ -710,51 +714,113 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                           );
                         },
                       ),
-                      // Stop button in top-right corner when recognition is active
+                      // Controls in top-right corner when recognition is active
                       if (isEnabled &&
                           recognitionState != RecognitionState.idle)
                         Positioned(
                           top: 12,
                           right: 12,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: _toggleRecognition,
-                              borderRadius: BorderRadius.circular(20),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Fast Inference Toggle
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () {
+                                    sensorDataProvider.setFastInference(
+                                      !sensorDataProvider.fastInference,
+                                    );
+                                  },
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.4),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.stop_circle,
-                                      size: 16,
-                                      color: Colors.white,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
                                     ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Stop',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white,
+                                    decoration: BoxDecoration(
+                                      color: sensorDataProvider.fastInference
+                                          ? Colors.amber.withValues(alpha: 0.3)
+                                          : Colors.white.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: sensorDataProvider.fastInference
+                                            ? Colors.amber.withValues(alpha: 0.6)
+                                            : Colors.white.withValues(alpha: 0.4),
+                                        width: 1,
                                       ),
                                     ),
-                                  ],
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          sensorDataProvider.fastInference
+                                              ? Icons.bolt
+                                              : Icons.bolt_outlined,
+                                          size: 14,
+                                          color: sensorDataProvider.fastInference
+                                              ? Colors.amber
+                                              : Colors.white,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Fast',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: sensorDataProvider.fastInference
+                                                ? Colors.amber
+                                                : Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              // Stop button
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: _toggleRecognition,
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(alpha: 0.4),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.stop_circle,
+                                          size: 16,
+                                          color: Colors.white,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Stop',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                     ],

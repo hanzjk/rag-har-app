@@ -58,16 +58,20 @@ class ActivityPredictor:
                 f"(window_size={window_size}, min_samples={min_samples}, step_size={step_size})"
             )
 
-    def predict(self, sensor_data: dict) -> Dict[str, Any] | None:
+    def predict(self, sensor_data: dict, fast_inference: bool = False) -> Dict[str, Any] | None:
         """
         Add sensor data to window and make prediction based on step size.
 
         Args:
             sensor_data: Dictionary containing sensor readings
+            fast_inference: If True, use faster inference with simpler prompts
 
         Returns:
             dict: Prediction with activity, confidence, and timestamp (None if not at step boundary)
         """
+        # Store fast_inference flag for use in prediction
+        self._fast_inference = fast_inference
+
         # Add new sample to sliding window
         self._add_to_window(sensor_data)
 
@@ -78,7 +82,8 @@ class ActivityPredictor:
         if self.samples_since_last_prediction >= self.step_size:
             logger.info(
                 f"Step boundary reached ({self.step_size} samples). "
-                f"Window: {len(self.window)}/{self.window_size} samples. Making prediction..."
+                f"Window: {len(self.window)}/{self.window_size} samples. Making prediction... "
+                f"(fast_inference={fast_inference})"
             )
             self.samples_since_last_prediction = 0  # Reset counter
             return self._predict_from_window()
@@ -175,12 +180,16 @@ class ActivityPredictor:
                 "error": "RAG classifier not initialized",
             }
 
-        logger.info("Using RAG-based classifier for prediction")
-        return self._predict_with_rag_classifier()
+        fast_inference = getattr(self, '_fast_inference', False)
+        logger.info(f"Using RAG-based classifier for prediction (fast_inference={fast_inference})")
+        return self._predict_with_rag_classifier(fast_inference=fast_inference)
 
-    def _predict_with_rag_classifier(self) -> Dict[str, Any]:
+    def _predict_with_rag_classifier(self, fast_inference: bool = False) -> Dict[str, Any]:
         """
         Predict activity using RAG-based classifier.
+
+        Args:
+            fast_inference: If True, use faster inference with simpler prompts
 
         Returns:
             dict: Prediction with activity, confidence, timestamp, and window data
@@ -188,10 +197,10 @@ class ActivityPredictor:
         try:
             # Convert window deque to list of dicts for classifier
             window_data = list(self.window)
-            logger.info(f"Invoking RAG classifier with {len(window_data)} samples")
+            logger.info(f"Invoking RAG classifier with {len(window_data)} samples (fast_inference={fast_inference})")
 
             # Call classifier's predict_from_window method
-            result = self.classifier.predict_from_window(window_data)
+            result = self.classifier.predict_from_window(window_data, fast_inference=fast_inference)
 
             logger.info(f"RAG prediction complete: {result['activity']}")
 
@@ -199,6 +208,7 @@ class ActivityPredictor:
                 "type": "activity_prediction",
                 "activity": result["activity"],
                 "reasoning": result.get("reasoning"),
+                "fast_inference": fast_inference,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "window_size": len(self.window),
                 "method": "rag_classifier",

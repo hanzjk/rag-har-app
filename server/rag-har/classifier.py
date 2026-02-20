@@ -37,6 +37,12 @@ class ActivityPrediction(BaseModel):
     reasoning: str
 
 
+class ActivityPredictionFast(BaseModel):
+    """Structured output for fast activity classification (no reasoning)."""
+
+    activity_label: str
+
+
 def extract_sensor_sections(text: str) -> Dict[str, str]:
     """
     Extract sensor sections for temporal segments from description text.
@@ -202,17 +208,18 @@ class RAGActivityClassifier:
 
         return "\n".join(description_parts)
 
-    def classify_dataframe(self, df: pd.DataFrame) -> Dict:
+    def classify_dataframe(self, df: pd.DataFrame, fast_inference: bool = False) -> Dict:
         """
         Classify a DataFrame containing sensor data directly.
 
         Args:
             df: DataFrame with sensor columns (accel_x, accel_y, accel_z, gyro_x, etc.)
+            fast_inference: If True, use faster inference with simpler prompts
 
         Returns:
             Dict with prediction and metadata
         """
-        logger.info(f"Starting classification for {len(df)} sensor samples")
+        logger.info(f"Starting classification for {len(df)} sensor samples (fast_inference={fast_inference})")
 
         # Generate feature description from the raw dataframe
         logger.info("Generating feature description from raw sensor data")
@@ -323,14 +330,23 @@ class RAGActivityClassifier:
         retrieved_data = "\n\n".join(sections)
         classes_str = str(self.valid_labels)
 
-        system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str}. 
+        if fast_inference:
+            # Fast inference: simpler prompt for quicker responses
+            system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str}."""
+            logger.info("Using FAST inference system prompt")
+        else:
+            # Standard inference: detailed prompt with explanation rules
+            system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str}.
         Provide a short explanation (2–3 sentences) using ONLY human-friendly motion descriptions.
 Explanation rules:
 - Use only: movement intensity (low/moderate/high), rhythm (steady/repeating/irregular), phone rotation (stable/some/frequent), and overall body movement.
-- Do NOT mention statistics, axes, gravity alignment, standard deviation, mean, variance, frequency, “near zero”, or any numbers.
+- Do NOT mention statistics, axes, gravity alignment, standard deviation, mean, variance, frequency, "near zero", or any numbers.
 - Do NOT copy phrases from the input; translate them into everyday language.
 - Keep it suitable for a mobile UI.
 """
+            logger.info("Using STANDARD inference system prompt")
+        
+        
         series = (
             f"[Whole Segment]:\n{whole_stats}\n"
             f"[Start Segment]:\n{start_stats}\n"
@@ -342,10 +358,14 @@ Explanation rules:
 
         # Call LLM with retry logic
         logger.info(
-            f"Calling LLM ({self.model}) for classification with retrieved context"
+            f"Calling LLM ({self.model}) for classification with retrieved context (fast_inference={fast_inference})"
         )
         success = False
         retry_count = 0
+
+        # Choose response format based on fast_inference
+        response_format = ActivityPredictionFast if fast_inference else ActivityPrediction
+
         while not success:
             try:
                 response = self.openai_client.beta.chat.completions.parse(
@@ -354,13 +374,13 @@ Explanation rules:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
                     ],
-                    response_format=ActivityPrediction,
+                    response_format=response_format,
                 )
                 prediction = response.choices[0].message.parsed.activity_label
-                reasoning = response.choices[0].message.parsed.reasoning
+                reasoning = getattr(response.choices[0].message.parsed, 'reasoning', None)
                 success = True
                 logger.info(
-                    f"LLM response received: {prediction} with reasoning: {reasoning}"
+                    f"LLM response received: {prediction}" + (f" with reasoning: {reasoning}" if reasoning else " (no reasoning)")
                 )
             except openai.RateLimitError:
                 retry_count += 1
@@ -389,6 +409,7 @@ Explanation rules:
         result = {
             "prediction": prediction,
             "reasoning": reasoning,
+            "fast_inference": fast_inference,
             "retrieved_labels": list(set(retrieved_labels)),
             "num_retrieved": len(retrieved_labels),
             "feature_description": content,
@@ -398,26 +419,27 @@ Explanation rules:
         )
         return result
 
-    def predict_from_window(self, window_data: list) -> Dict[str, Any]:
+    def predict_from_window(self, window_data: list, fast_inference: bool = False) -> Dict[str, Any]:
         """
         Simplified prediction method for real-time use in activity_predictor.
 
         Args:
             window_data: List of sensor reading dicts with keys:
                         accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z
+            fast_inference: If True, use faster inference with simpler prompts
 
         Returns:
             Dict with 'activity' (predicted label) and 'confidence' (float)
         """
         try:
-            logger.info(f"predict_from_window called with {len(window_data)} samples")
+            logger.info(f"predict_from_window called with {len(window_data)} samples (fast_inference={fast_inference})")
 
             # Convert window data to DataFrame
             df = pd.DataFrame(window_data)
             logger.info(f"Converted to DataFrame with shape {df.shape}")
 
             # Use classify_dataframe method
-            result = self.classify_dataframe(df)
+            result = self.classify_dataframe(df, fast_inference=fast_inference)
 
             # Get prediction from result
             prediction = result["prediction"]

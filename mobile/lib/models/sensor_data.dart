@@ -8,6 +8,7 @@ class SensorData {
   final String? activityLabel;
   final String messageType;
   final String? subjectId;
+  final bool fastInference;
 
   SensorData({
     required this.timestamp,
@@ -16,6 +17,7 @@ class SensorData {
     this.activityLabel,
     this.messageType = 'sensor_data',
     this.subjectId = 'subject0',
+    this.fastInference = false,
   });
 
   factory SensorData.fromSensorEvents({
@@ -53,6 +55,10 @@ class SensorData {
 
     if (subjectId != null) {
       json['subject_id'] = subjectId!;
+    }
+
+    if (fastInference) {
+      json['fast_inference'] = true;
     }
 
     return json;
