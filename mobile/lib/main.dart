@@ -4,6 +4,7 @@ import 'providers/app_state_provider.dart';
 import 'providers/sensor_data_provider.dart';
 import 'providers/activity_provider.dart';
 import 'providers/device_info_provider.dart';
+import 'providers/datastore_provider.dart';
 import 'services/sensor_service.dart';
 import 'services/websocket_service.dart';
 import 'screens/home_screen.dart';
@@ -79,6 +80,9 @@ class _MyAppState extends State<MyApp> {
         ChangeNotifierProvider.value(value: _activityProvider),
         ChangeNotifierProvider(
           create: (_) => DeviceInfoProvider(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => DataStoreProvider(websocketService: _websocketService),
         ),
       ],
       child: MaterialApp(

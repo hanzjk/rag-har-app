@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'home_tab_screen.dart';
 import 'progress_screen.dart';
-import 'workouts_screen.dart';
 import 'data_collection_screen.dart';
 import 'settings_screen.dart';
 
@@ -22,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void navigateToTab(int index) {
     setState(() {
-      _selectedIndex = index;
+      _selectedIndex = index.clamp(0, _screens.length - 1);
     });
   }
 
@@ -34,7 +33,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _screens = [
       const HomeTabScreen(),
       const ProgressScreen(),
-      const WorkoutsScreen(),
       const DataCollectionScreen(),
       const SettingsScreen(),
     ];
@@ -42,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onItemTapped(int index) {
     setState(() {
-      _selectedIndex = index;
+      _selectedIndex = index.clamp(0, _screens.length - 1);
     });
   }
 
@@ -93,10 +91,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      body: _screens[_selectedIndex],
+      body: _screens[_selectedIndex.clamp(0, _screens.length - 1)],
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
-        currentIndex: _selectedIndex,
+        currentIndex: _selectedIndex.clamp(0, _screens.length - 1),
         onTap: _onItemTapped,
         selectedItemColor: Color(0xFF2563EB),
         unselectedItemColor: Colors.grey,
@@ -112,11 +110,6 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.show_chart),
             activeIcon: Icon(Icons.show_chart),
             label: 'Progress',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.fitness_center_outlined),
-            activeIcon: Icon(Icons.fitness_center),
-            label: 'Workouts',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.storage_outlined),

@@ -965,69 +965,6 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                 ],
               ),
 
-              const SizedBox(height: 16),
-
-              // Quick Start Section
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Color(0xFFE5E7EB), width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Quick Start',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildQuickStartButton(
-                            icon: Icons.directions_walk,
-                            label: 'Walk',
-                            color: Color(0xFFDDEEFF),
-                            iconColor: Color(0xFF2563EB),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _buildQuickStartButton(
-                            icon: Icons.directions_run,
-                            label: 'Run',
-                            color: Color(0xFFFFE5E5),
-                            iconColor: Color(0xFFDC2626),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _buildQuickStartButton(
-                            icon: Icons.fitness_center,
-                            label: 'Workout',
-                            color: Color(0xFFE0F5E9),
-                            iconColor: Color(0xFF059669),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),
@@ -1116,35 +1053,6 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                 ),
               ],
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickStartButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required Color iconColor,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: iconColor, size: 24),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: iconColor,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
           ),
         ],
       ),

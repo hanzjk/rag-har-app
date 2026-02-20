@@ -203,10 +203,126 @@ class WebSocketService {
     _updateConnectionState(ConnectionState.disconnected);
   }
 
+  // ==================== Data Store Management ====================
+
+  void createDatastore(String name) {
+    if (_connectionState == ConnectionState.connected && _channel != null) {
+      try {
+        final message = jsonEncode({
+          'type': 'create_datastore',
+          'name': name,
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+        _channel!.sink.add(message);
+        print('WebSocketService: Sent create_datastore request for: $name');
+      } catch (e) {
+        print('WebSocketService: Error sending create_datastore: $e');
+      }
+    }
+  }
+
+  void deleteDatastore(String collectionName) {
+    if (_connectionState == ConnectionState.connected && _channel != null) {
+      try {
+        final message = jsonEncode({
+          'type': 'delete_datastore',
+          'collection_name': collectionName,
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+        _channel!.sink.add(message);
+        print('WebSocketService: Sent delete_datastore request for: $collectionName');
+      } catch (e) {
+        print('WebSocketService: Error sending delete_datastore: $e');
+      }
+    }
+  }
+
+  void listDatastores() {
+    if (_connectionState == ConnectionState.connected && _channel != null) {
+      try {
+        final message = jsonEncode({
+          'type': 'list_datastores',
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+        _channel!.sink.add(message);
+        print('WebSocketService: Sent list_datastores request');
+      } catch (e) {
+        print('WebSocketService: Error sending list_datastores: $e');
+      }
+    }
+  }
+
+  void setDatastore(String collectionName) {
+    if (_connectionState == ConnectionState.connected && _channel != null) {
+      try {
+        final message = jsonEncode({
+          'type': 'set_datastore',
+          'collection_name': collectionName,
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+        _channel!.sink.add(message);
+        print('WebSocketService: Sent set_datastore request for: $collectionName');
+      } catch (e) {
+        print('WebSocketService: Error sending set_datastore: $e');
+      }
+    }
+  }
+
+  void getCurrentDatastore() {
+    if (_connectionState == ConnectionState.connected && _channel != null) {
+      try {
+        final message = jsonEncode({
+          'type': 'get_current_datastore',
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+        _channel!.sink.add(message);
+        print('WebSocketService: Sent get_current_datastore request');
+      } catch (e) {
+        print('WebSocketService: Error sending get_current_datastore: $e');
+      }
+    }
+  }
+
   void dispose() {
     disconnect();
     _activityController.close();
     _connectionStateController.close();
     _messageController.close();
   }
+}
+
+// ==================== Data Store Model ====================
+
+class DataStore {
+  final String name;
+  final String collectionName;
+  final int sampleCount;
+  final bool isDefault;
+  final bool isActive;
+
+  DataStore({
+    required this.name,
+    required this.collectionName,
+    required this.sampleCount,
+    required this.isDefault,
+    required this.isActive,
+  });
+
+  factory DataStore.fromJson(Map<String, dynamic> json) {
+    return DataStore(
+      name: json['name'] ?? '',
+      collectionName: json['collection_name'] ?? '',
+      sampleCount: json['sample_count'] ?? 0,
+      isDefault: json['is_default'] ?? false,
+      isActive: json['is_active'] ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'collection_name': collectionName,
+    'sample_count': sampleCount,
+    'is_default': isDefault,
+    'is_active': isActive,
+  };
 }

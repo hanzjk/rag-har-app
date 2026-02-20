@@ -13,7 +13,7 @@ from typing import Dict, List, Any
 
 import pandas as pd
 from langchain_openai import OpenAIEmbeddings
-from pymilvus import MilvusClient, WeightedRanker, AnnSearchRequest
+from pymilvus import MilvusClient, WeightedRanker, AnnSearchRequest, DataType
 from openai import OpenAI
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -77,6 +77,11 @@ class RAGActivityClassifier:
     5. Track RAG quality metrics
     """
 
+    # Default collection name (shared data store)
+    DEFAULT_COLLECTION_NAME = "har_demo_collection"
+    # Prefix for user data stores
+    USER_DATASTORE_PREFIX = "har_user_"
+
     def __init__(
         self,
         model: str = "gpt-5-mini",
@@ -93,7 +98,7 @@ class RAGActivityClassifier:
         """
         # Hardcoded configuration for har_demo dataset
         self.dataset_name = "har_demo"
-        self.collection_name = "har_demo_collection"
+        self.collection_name = self.DEFAULT_COLLECTION_NAME
         self.valid_labels = [
             "walking",
             "running",
@@ -145,6 +150,288 @@ class RAGActivityClassifier:
         print(
             f"Retrieval: {self.fewshot} per segment → {self.out_fewshot} final samples"
         )
+
+    # ==================== Data Store Management ====================
+
+    def set_collection(self, collection_name: str) -> bool:
+        """
+        Switch to a different collection (data store).
+
+        Args:
+            collection_name: Name of the collection to switch to
+
+        Returns:
+            True if collection exists and was switched, False otherwise
+        """
+        collections = self.milvus_client.list_collections()
+        if collection_name not in collections:
+            logger.warning(f"Collection {collection_name} does not exist")
+            return False
+
+        self.collection_name = collection_name
+        logger.info(f"Switched to collection: {collection_name}")
+        return True
+
+    def create_datastore(self, name: str) -> Dict[str, Any]:
+        """
+        Create a new user data store (Milvus collection).
+
+        Args:
+            name: User-friendly name for the data store
+
+        Returns:
+            Dict with success status and collection details
+        """
+        # Generate collection name from user-provided name
+        # Sanitize name: lowercase, replace spaces with underscores, remove special chars
+        sanitized_name = re.sub(r'[^a-z0-9_]', '', name.lower().replace(' ', '_'))
+        collection_name = f"{self.USER_DATASTORE_PREFIX}{sanitized_name}"
+
+        # Check if collection already exists
+        collections = self.milvus_client.list_collections()
+        if collection_name in collections:
+            logger.warning(f"Data store '{name}' already exists")
+            return {
+                "success": False,
+                "error": f"Data store '{name}' already exists",
+                "collection_name": collection_name,
+            }
+
+        try:
+            # Create schema matching the default collection
+            schema = MilvusClient.create_schema(
+                auto_id=False,
+                enable_dynamic_field=False,
+            )
+            schema.add_field(
+                field_name="text",
+                datatype=DataType.VARCHAR,
+                is_primary=True,
+                max_length=100,
+            )
+            schema.add_field(
+                field_name="timeseries_metadata",
+                datatype=DataType.JSON,
+                max_length=10000,
+            )
+            schema.add_field(
+                field_name="stats_whole_text",
+                datatype=DataType.VARCHAR,
+                max_length=10000,
+            )
+            schema.add_field(
+                field_name="stats_start_text",
+                datatype=DataType.VARCHAR,
+                max_length=10000,
+            )
+            schema.add_field(
+                field_name="stats_mid_text",
+                datatype=DataType.VARCHAR,
+                max_length=10000,
+            )
+            schema.add_field(
+                field_name="stats_end_text",
+                datatype=DataType.VARCHAR,
+                max_length=10000,
+            )
+            schema.add_field(
+                field_name="activity_stats_emb",
+                datatype=DataType.FLOAT_VECTOR,
+                dim=1536,
+            )
+            schema.add_field(
+                field_name="activity_stats_start_emb",
+                datatype=DataType.FLOAT_VECTOR,
+                dim=1536,
+            )
+            schema.add_field(
+                field_name="activity_stats_mid_emb",
+                datatype=DataType.FLOAT_VECTOR,
+                dim=1536,
+            )
+            schema.add_field(
+                field_name="activity_stats_end_emb",
+                datatype=DataType.FLOAT_VECTOR,
+                dim=1536,
+            )
+
+            # Create index params
+            index_params = self.milvus_client.prepare_index_params()
+            index_params.add_index(
+                field_name="activity_stats_emb",
+                index_type="AUTOINDEX",
+                metric_type="COSINE",
+            )
+            index_params.add_index(
+                field_name="activity_stats_start_emb",
+                index_type="AUTOINDEX",
+                metric_type="COSINE",
+            )
+            index_params.add_index(
+                field_name="activity_stats_mid_emb",
+                index_type="AUTOINDEX",
+                metric_type="COSINE",
+            )
+            index_params.add_index(
+                field_name="activity_stats_end_emb",
+                index_type="AUTOINDEX",
+                metric_type="COSINE",
+            )
+
+            # Create the collection
+            self.milvus_client.create_collection(
+                collection_name=collection_name,
+                metric_type="COSINE",
+                schema=schema,
+                index_params=index_params,
+            )
+
+            logger.info(f"Created data store: {name} (collection: {collection_name})")
+            return {
+                "success": True,
+                "name": name,
+                "collection_name": collection_name,
+                "sample_count": 0,
+            }
+
+        except Exception as e:
+            logger.error(f"Error creating data store: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def delete_datastore(self, collection_name: str) -> Dict[str, Any]:
+        """
+        Delete a user data store.
+
+        Args:
+            collection_name: Name of the collection to delete
+
+        Returns:
+            Dict with success status
+        """
+        # Prevent deleting the default collection
+        if collection_name == self.DEFAULT_COLLECTION_NAME:
+            logger.warning("Cannot delete the default data store")
+            return {
+                "success": False,
+                "error": "Cannot delete the default data store",
+            }
+
+        # Check if collection exists
+        collections = self.milvus_client.list_collections()
+        if collection_name not in collections:
+            logger.warning(f"Data store {collection_name} does not exist")
+            return {
+                "success": False,
+                "error": f"Data store does not exist",
+            }
+
+        try:
+            self.milvus_client.drop_collection(collection_name)
+            logger.info(f"Deleted data store: {collection_name}")
+
+            # If we were using this collection, switch back to default
+            if self.collection_name == collection_name:
+                self.collection_name = self.DEFAULT_COLLECTION_NAME
+                logger.info(f"Switched back to default collection")
+
+            return {
+                "success": True,
+                "deleted_collection": collection_name,
+            }
+
+        except Exception as e:
+            logger.error(f"Error deleting data store: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def list_datastores(self) -> Dict[str, Any]:
+        """
+        List all available data stores (collections).
+
+        Returns:
+            Dict with list of data stores and their stats
+        """
+        try:
+            collections = self.milvus_client.list_collections()
+            datastores = []
+
+            for coll_name in collections:
+                # Check if it's a HAR-related collection
+                if coll_name == self.DEFAULT_COLLECTION_NAME or coll_name.startswith(self.USER_DATASTORE_PREFIX):
+                    try:
+                        # Get collection stats
+                        stats = self.milvus_client.get_collection_stats(coll_name)
+                        sample_count = stats.get("row_count", 0)
+                    except Exception:
+                        sample_count = 0
+
+                    # Extract user-friendly name
+                    if coll_name == self.DEFAULT_COLLECTION_NAME:
+                        display_name = "Default (shared)"
+                        is_default = True
+                    else:
+                        # Remove prefix to get user name
+                        display_name = coll_name[len(self.USER_DATASTORE_PREFIX):].replace('_', ' ').title()
+                        is_default = False
+
+                    datastores.append({
+                        "name": display_name,
+                        "collection_name": coll_name,
+                        "sample_count": sample_count,
+                        "is_default": is_default,
+                        "is_active": coll_name == self.collection_name,
+                    })
+
+            # Sort: default first, then by name
+            datastores.sort(key=lambda x: (not x["is_default"], x["name"]))
+
+            return {
+                "success": True,
+                "datastores": datastores,
+                "active_collection": self.collection_name,
+            }
+
+        except Exception as e:
+            logger.error(f"Error listing data stores: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "datastores": [],
+            }
+
+    def get_current_datastore(self) -> Dict[str, Any]:
+        """
+        Get info about the currently active data store.
+
+        Returns:
+            Dict with current data store info
+        """
+        try:
+            stats = self.milvus_client.get_collection_stats(self.collection_name)
+            sample_count = stats.get("row_count", 0)
+        except Exception:
+            sample_count = 0
+
+        is_default = self.collection_name == self.DEFAULT_COLLECTION_NAME
+
+        if is_default:
+            display_name = "Default (shared)"
+        else:
+            display_name = self.collection_name[len(self.USER_DATASTORE_PREFIX):].replace('_', ' ').title()
+
+        return {
+            "name": display_name,
+            "collection_name": self.collection_name,
+            "sample_count": sample_count,
+            "is_default": is_default,
+        }
+
+    # ==================== End Data Store Management ====================
 
     # Note: _split_temporal_segments and _compute_stats removed - using FeatureExtractorUtils instead
 

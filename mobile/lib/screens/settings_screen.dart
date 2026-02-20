@@ -5,6 +5,7 @@ import '../providers/app_state_provider.dart';
 import '../providers/sensor_data_provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/device_info_provider.dart';
+import '../providers/datastore_provider.dart';
 import '../services/permission_service.dart';
 import '../services/websocket_service.dart' as ws;
 
@@ -16,11 +17,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
-  bool _dataSharingEnabled = false;
-  bool _sleepModeEnabled = false;
-  bool _gpsTrackingEnabled = true;
   late TextEditingController _urlController;
+  late TextEditingController _datastoreNameController;
   final PermissionService _permissionService = PermissionService();
 
   @override
@@ -28,11 +26,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     final appState = context.read<AppStateProvider>();
     _urlController = TextEditingController(text: appState.websocketUrl);
+    _datastoreNameController = TextEditingController();
+
+    // Auto-refresh datastores when settings screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoRefreshDatastores();
+    });
+  }
+
+  Future<void> _autoRefreshDatastores() async {
+    final appState = context.read<AppStateProvider>();
+    final sensorDataProvider = context.read<SensorDataProvider>();
+    final datastoreProvider = context.read<DataStoreProvider>();
+
+    // Skip if in demo mode
+    if (appState.demoModeEnabled) return;
+
+    // Connect to WebSocket if not connected
+    if (sensorDataProvider.websocketService.connectionState != ws.ConnectionState.connected) {
+      try {
+        await sensorDataProvider.websocketService.connect(appState.websocketUrl);
+      } catch (e) {
+        // Connection failed, don't refresh
+        return;
+      }
+    }
+
+    // Refresh datastores
+    datastoreProvider.refreshDatastores();
   }
 
   @override
   void dispose() {
     _urlController.dispose();
+    _datastoreNameController.dispose();
     super.dispose();
   }
 
@@ -315,7 +342,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               const SizedBox(height: 16),
 
-              // General Settings Section
+              // Data Store Section
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -324,72 +351,169 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   border: Border.all(color: Color(0xFFE5E7EB), width: 1),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 4,
                       offset: const Offset(0, 1),
                     ),
                   ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'General Settings',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildToggleItem(
-                      icon: Icons.notifications_outlined,
-                      title: 'Notifications',
-                      subtitle: 'Get reminders and progress updates',
-                      value: _notificationsEnabled,
-                      onChanged: (value) {
-                        setState(() {
-                          _notificationsEnabled = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _buildToggleItem(
-                      icon: Icons.share_outlined,
-                      title: 'Data Sharing',
-                      subtitle: 'Share anonymized data for research',
-                      value: _dataSharingEnabled,
-                      onChanged: (value) {
-                        setState(() {
-                          _dataSharingEnabled = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _buildToggleItem(
-                      icon: Icons.bedtime_outlined,
-                      title: 'Sleep Mode',
-                      subtitle: 'Pause tracking during sleep hours',
-                      value: _sleepModeEnabled,
-                      onChanged: (value) {
-                        setState(() {
-                          _sleepModeEnabled = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _buildToggleItem(
-                      icon: Icons.location_on_outlined,
-                      title: 'GPS Tracking',
-                      subtitle: 'Track your outdoor routes and distance',
-                      value: _gpsTrackingEnabled,
-                      onChanged: (value) {
-                        setState(() {
-                          _gpsTrackingEnabled = value;
-                        });
-                      },
-                    ),
-                  ],
+                child: Consumer<DataStoreProvider>(
+                  builder: (context, datastoreProvider, _) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Data Store',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                            if (datastoreProvider.isLoading)
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Color(0xFF2563EB),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Manage your personal data stores for activity recognition',
+                          style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Current Data Store
+                        if (datastoreProvider.currentDatastore != null) ...[
+                          _buildCurrentDatastoreCard(datastoreProvider.currentDatastore!),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // Error message
+                        if (datastoreProvider.error != null) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Color(0xFFFEE2E2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.error_outline, color: Color(0xFFDC2626), size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    datastoreProvider.error!,
+                                    style: TextStyle(fontSize: 12, color: Color(0xFFDC2626)),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.close, size: 16),
+                                  onPressed: () => datastoreProvider.clearError(),
+                                  padding: EdgeInsets.zero,
+                                  constraints: BoxConstraints(),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+                        Divider(height: 1, thickness: 1, color: Color(0xFFE5E7EB)),
+                        const SizedBox(height: 16),
+
+                        // My Data Stores header
+                        Text(
+                          'My Data Stores',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // List of all data stores (including default)
+                        if (datastoreProvider.datastores.isEmpty)
+                          Text(
+                            'No data stores available',
+                            style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+                          )
+                        else
+                          ...datastoreProvider.datastores
+                              .map((ds) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: _buildDatastoreItem(ds, datastoreProvider),
+                                  )),
+
+                        const SizedBox(height: 12),
+
+                        // Create New Data Store button
+                        InkWell(
+                          onTap: () => _showCreateDatastoreDialog(datastoreProvider),
+                          borderRadius: BorderRadius.circular(12),
+                          child: DottedBorder(
+                            color: Color(0xFF2563EB),
+                            strokeWidth: 1,
+                            dashPattern: [4, 4],
+                            borderType: BorderType.RRect,
+                            radius: Radius.circular(12),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Color(0xFFF0F9FF),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.add,
+                                    color: Color(0xFF2563EB),
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Create New Data Store',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF2563EB),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // Refresh button
+                        Center(
+                          child: TextButton.icon(
+                            onPressed: () => _refreshDatastores(datastoreProvider),
+                            icon: Icon(Icons.refresh, size: 16),
+                            label: Text('Refresh'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Color(0xFF6B7280),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
 
@@ -404,7 +528,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   border: Border.all(color: Color(0xFFE5E7EB), width: 1),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 4,
                       offset: const Offset(0, 1),
                     ),
@@ -486,6 +610,238 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildCurrentDatastoreCard(ws.DataStore datastore) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Color(0xFFF0F9FF),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Color(0xFF2563EB).withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.storage, color: Color(0xFF2563EB), size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Active Data Store',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  datastore.name,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                Text(
+                  '${datastore.sampleCount} samples',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Color(0xFF2563EB),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'Active',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDatastoreItem(ws.DataStore datastore, DataStoreProvider provider) {
+    final isActive = datastore.isActive;
+    final isDefault = datastore.isDefault;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isActive ? Color(0xFFF0F9FF) : Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isActive ? Color(0xFF2563EB).withValues(alpha: 0.3) : Color(0xFFE5E7EB),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isDefault ? Icons.cloud : Icons.folder,
+            color: isActive ? Color(0xFF2563EB) : Color(0xFF6B7280),
+            size: 22,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      datastore.name,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                    if (isDefault) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Color(0xFFE5E7EB),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'Shared',
+                          style: TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                Text(
+                  '${datastore.sampleCount} samples',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                ),
+              ],
+            ),
+          ),
+          if (!isActive) ...[
+            TextButton(
+              onPressed: () => provider.setDatastore(datastore.collectionName),
+              style: TextButton.styleFrom(
+                foregroundColor: Color(0xFF2563EB),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                minimumSize: Size.zero,
+              ),
+              child: Text('Use', style: TextStyle(fontSize: 13)),
+            ),
+          ],
+          // Only show delete button for non-default stores
+          if (!isDefault)
+            IconButton(
+              onPressed: () => _showDeleteDatastoreDialog(datastore, provider),
+              icon: Icon(Icons.delete_outline, size: 20),
+              color: Color(0xFFDC2626),
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateDatastoreDialog(DataStoreProvider provider) {
+    _datastoreNameController.clear();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Data Store'),
+        content: TextField(
+          controller: _datastoreNameController,
+          decoration: const InputDecoration(
+            labelText: 'Name',
+            hintText: 'e.g., My Running Data',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final name = _datastoreNameController.text.trim();
+              if (name.isNotEmpty) {
+                provider.createDatastore(name);
+                Navigator.pop(context);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteDatastoreDialog(ws.DataStore datastore, DataStoreProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Data Store'),
+        content: Text(
+          'Are you sure you want to delete "${datastore.name}"? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              provider.deleteDatastore(datastore.collectionName);
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _refreshDatastores(DataStoreProvider provider) async {
+    final appState = context.read<AppStateProvider>();
+    final sensorDataProvider = context.read<SensorDataProvider>();
+
+    // Connect to WebSocket if not connected
+    if (sensorDataProvider.websocketService.connectionState != ws.ConnectionState.connected) {
+      try {
+        await sensorDataProvider.websocketService.connect(appState.websocketUrl);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Connection failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    provider.refreshDatastores();
   }
 
   Widget _buildToggleItem({
