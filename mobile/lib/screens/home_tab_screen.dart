@@ -917,53 +917,54 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                 },
               ),
 
-              const SizedBox(height: 16),
+              // TODO: Uncomment when real stat tracking is implemented
+              // const SizedBox(height: 16),
 
-              // Stats Grid
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 1.15,
-                children: [
-                  _buildStatCard(
-                    icon: Icons.directions_walk,
-                    iconColor: Color(0xFF3B82F6),
-                    title: 'Steps',
-                    value: '8,547',
-                    change: '+12% vs yesterday',
-                    changePositive: true,
-                  ),
-                  _buildStatCard(
-                    icon: Icons.local_fire_department,
-                    iconColor: Color(0xFFFF6B00),
-                    title: 'Calories',
-                    value: '520',
-                    unit: 'kcal',
-                    change: '+8% vs yesterday',
-                    changePositive: true,
-                  ),
-                  _buildStatCard(
-                    icon: Icons.access_time,
-                    iconColor: Color(0xFF10B981),
-                    title: 'Active Time',
-                    value: '75',
-                    unit: 'min',
-                    change: '-5% vs yesterday',
-                    changePositive: false,
-                  ),
-                  _buildStatCard(
-                    icon: Icons.favorite,
-                    iconColor: Color(0xFFEF4444),
-                    title: 'Heart Rate',
-                    value: '78',
-                    unit: 'bpm',
-                    change: null,
-                  ),
-                ],
-              ),
+              // // Stats Grid
+              // GridView.count(
+              //   shrinkWrap: true,
+              //   physics: const NeverScrollableScrollPhysics(),
+              //   crossAxisCount: 2,
+              //   mainAxisSpacing: 12,
+              //   crossAxisSpacing: 12,
+              //   childAspectRatio: 1.15,
+              //   children: [
+              //     _buildStatCard(
+              //       icon: Icons.directions_walk,
+              //       iconColor: Color(0xFF3B82F6),
+              //       title: 'Steps',
+              //       value: '8,547',
+              //       change: '+12% vs yesterday',
+              //       changePositive: true,
+              //     ),
+              //     _buildStatCard(
+              //       icon: Icons.local_fire_department,
+              //       iconColor: Color(0xFFFF6B00),
+              //       title: 'Calories',
+              //       value: '520',
+              //       unit: 'kcal',
+              //       change: '+8% vs yesterday',
+              //       changePositive: true,
+              //     ),
+              //     _buildStatCard(
+              //       icon: Icons.access_time,
+              //       iconColor: Color(0xFF10B981),
+              //       title: 'Active Time',
+              //       value: '75',
+              //       unit: 'min',
+              //       change: '-5% vs yesterday',
+              //       changePositive: false,
+              //     ),
+              //     _buildStatCard(
+              //       icon: Icons.favorite,
+              //       iconColor: Color(0xFFEF4444),
+              //       title: 'Heart Rate',
+              //       value: '78',
+              //       unit: 'bpm',
+              //       change: null,
+              //     ),
+              //   ],
+              // ),
 
             ],
           ),
@@ -972,92 +973,93 @@ class _HomeTabScreenState extends State<HomeTabScreen>
     );
   }
 
-  Widget _buildStatCard({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String value,
-    String? unit,
-    String? change,
-    bool? changePositive,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Color(0xFFE5E7EB), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: iconColor,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Flexible(
-                    child: Text(
-                      value,
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF111827),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (unit != null) ...[
-                    const SizedBox(width: 4),
-                    Text(
-                      unit,
-                      style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
-                    ),
-                  ],
-                ],
-              ),
-              if (change != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  change,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: changePositive == true
-                        ? Color(0xFF059669)
-                        : Color(0xFFDC2626),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  // TODO: Uncomment when real stat tracking is implemented
+  // Widget _buildStatCard({
+  //   required IconData icon,
+  //   required Color iconColor,
+  //   required String title,
+  //   required String value,
+  //   String? unit,
+  //   String? change,
+  //   bool? changePositive,
+  // }) {
+  //   return Container(
+  //     padding: const EdgeInsets.all(16),
+  //     decoration: BoxDecoration(
+  //       color: Colors.white,
+  //       borderRadius: BorderRadius.circular(12),
+  //       border: Border.all(color: Color(0xFFE5E7EB), width: 1),
+  //       boxShadow: [
+  //         BoxShadow(
+  //           color: Colors.black.withOpacity(0.05),
+  //           blurRadius: 4,
+  //           offset: const Offset(0, 1),
+  //         ),
+  //       ],
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //       children: [
+  //         Container(
+  //           padding: const EdgeInsets.all(10),
+  //           decoration: BoxDecoration(
+  //             color: iconColor,
+  //             borderRadius: BorderRadius.circular(8),
+  //           ),
+  //           child: Icon(icon, color: Colors.white, size: 20),
+  //         ),
+  //         Column(
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             Text(
+  //               title,
+  //               style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+  //             ),
+  //             const SizedBox(height: 4),
+  //             Row(
+  //               crossAxisAlignment: CrossAxisAlignment.baseline,
+  //               textBaseline: TextBaseline.alphabetic,
+  //               children: [
+  //                 Flexible(
+  //                   child: Text(
+  //                     value,
+  //                     style: TextStyle(
+  //                       fontSize: 24,
+  //                       fontWeight: FontWeight.w600,
+  //                       color: Color(0xFF111827),
+  //                     ),
+  //                     overflow: TextOverflow.ellipsis,
+  //                   ),
+  //                 ),
+  //                 if (unit != null) ...[
+  //                   const SizedBox(width: 4),
+  //                   Text(
+  //                     unit,
+  //                     style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+  //                   ),
+  //                 ],
+  //               ],
+  //             ),
+  //             if (change != null) ...[
+  //               const SizedBox(height: 4),
+  //               Text(
+  //                 change,
+  //                 style: TextStyle(
+  //                   fontSize: 12,
+  //                   color: changePositive == true
+  //                       ? Color(0xFF059669)
+  //                       : Color(0xFFDC2626),
+  //                 ),
+  //                 overflow: TextOverflow.ellipsis,
+  //               ),
+  //             ],
+  //           ],
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildSensorChart(String name) {
     List<double> xData, yData, zData;
