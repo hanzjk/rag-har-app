@@ -617,23 +617,6 @@ class RAGActivityClassifier:
         retrieved_data = "\n\n".join(sections)
         classes_str = str(self.valid_labels)
 
-        if fast_inference:
-            # Fast inference: simpler prompt for quicker responses
-            system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str}."""
-            logger.info("Using FAST inference system prompt")
-        else:
-            # Standard inference: detailed prompt with explanation rules
-            system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str}.
-        Provide a short explanation (2–3 sentences) using ONLY human-friendly motion descriptions.
-Explanation rules:
-- Use only: movement intensity (low/moderate/high), rhythm (steady/repeating/irregular), phone rotation (stable/some/frequent), and overall body movement.
-- Do NOT mention statistics, axes, gravity alignment, standard deviation, mean, variance, frequency, "near zero", or any numbers.
-- Do NOT copy phrases from the input; translate them into everyday language.
-- Keep it suitable for a mobile UI.
-"""
-            logger.info("Using STANDARD inference system prompt")
-        
-        
         series = (
             f"[Whole Segment]:\n{whole_stats}\n"
             f"[Start Segment]:\n{start_stats}\n"
@@ -643,53 +626,92 @@ Explanation rules:
 
         user_prompt = f"""\n You are given summary statistics for sensor data across temporal segments for labeled samples and one unlabeled candidate.\n\n--- CANDIDATE ---\n{series}\n\n--- LABELED SAMPLES ---\n{retrieved_data}\n"""
 
-        # Call LLM with retry logic
-        logger.info(
-            f"Calling LLM ({self.model}) for classification with retrieved context (fast_inference={fast_inference})"
-        )
         success = False
         retry_count = 0
+        prediction = None
+        reasoning = None
 
-        # Choose response format based on fast_inference
-        response_format = ActivityPredictionFast if fast_inference else ActivityPrediction
+        if fast_inference:
+            # FAST INFERENCE: Use gpt-5-mini without structured output for speed
+            fast_model = "gpt-5-mini"
+            system_prompt = f"Classify the activity. Reply with ONLY one word from: {classes_str}"
 
-        while not success:
-            try:
-                response = self.openai_client.beta.chat.completions.parse(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    response_format=response_format,
-                )
-                prediction = response.choices[0].message.parsed.activity_label
-                reasoning = getattr(response.choices[0].message.parsed, 'reasoning', None)
-                success = True
-                logger.info(
-                    f"LLM response received: {prediction}" + (f" with reasoning: {reasoning}" if reasoning else " (no reasoning)")
-                )
-            except openai.RateLimitError:
-                retry_count += 1
-                logger.warning(
-                    f"Rate limit reached (retry {retry_count}). Waiting 65 seconds..."
-                )
-                print("Rate limit reached. Waiting 65 seconds...")
-                time.sleep(65)
-            except Exception as e:
-                retry_count += 1
-                logger.warning(
-                    f"OpenAI API error (retry {retry_count}): {e}. Waiting 10 seconds..."
-                )
-                print(f"OpenAI API error: {e}. Waiting 10 seconds...")
-                time.sleep(10)
+            logger.info(f"FAST INFERENCE: Using {fast_model} without structured output")
+
+            while not success:
+                try:
+                    response = self.openai_client.chat.completions.create(
+                        model=fast_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        max_tokens=10,
+                    )
+                    prediction = response.choices[0].message.content.strip().lower()
+                    # Validate prediction is in valid labels
+                    if prediction not in [label.lower() for label in self.valid_labels]:
+                        # Try to find closest match
+                        for label in self.valid_labels:
+                            if label.lower() in prediction or prediction in label.lower():
+                                prediction = label
+                                break
+                    reasoning = None
+                    success = True
+                    logger.info(f"FAST LLM response received: {prediction}")
+                except openai.RateLimitError:
+                    retry_count += 1
+                    logger.warning(f"Rate limit reached (retry {retry_count}). Waiting 65 seconds...")
+                    print("Rate limit reached. Waiting 65 seconds...")
+                    time.sleep(65)
+                except Exception as e:
+                    retry_count += 1
+                    logger.warning(f"OpenAI API error (retry {retry_count}): {e}. Waiting 10 seconds...")
+                    print(f"OpenAI API error: {e}. Waiting 10 seconds...")
+                    time.sleep(10)
+        else:
+            # STANDARD INFERENCE: Use structured output with reasoning
+            system_prompt = f"""Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str}.
+        Provide a short explanation (2–3 sentences) using ONLY human-friendly motion descriptions.
+Explanation rules:
+- Use only: movement intensity (low/moderate/high), rhythm (steady/repeating/irregular), phone rotation (stable/some/frequent), and overall body movement.
+- Do NOT mention statistics, axes, gravity alignment, standard deviation, mean, variance, frequency, "near zero", or any numbers.
+- Do NOT copy phrases from the input; translate them into everyday language.
+- Keep it suitable for a mobile UI.
+"""
+            logger.info(f"STANDARD INFERENCE: Using {self.model} with structured output")
+
+            while not success:
+                try:
+                    response = self.openai_client.beta.chat.completions.parse(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        response_format=ActivityPrediction,
+                    )
+                    prediction = response.choices[0].message.parsed.activity_label
+                    reasoning = response.choices[0].message.parsed.reasoning
+                    success = True
+                    logger.info(f"LLM response received: {prediction} with reasoning: {reasoning}")
+                except openai.RateLimitError:
+                    retry_count += 1
+                    logger.warning(f"Rate limit reached (retry {retry_count}). Waiting 65 seconds...")
+                    print("Rate limit reached. Waiting 65 seconds...")
+                    time.sleep(65)
+                except Exception as e:
+                    retry_count += 1
+                    logger.warning(f"OpenAI API error (retry {retry_count}): {e}. Waiting 10 seconds...")
+                    print(f"OpenAI API error: {e}. Waiting 10 seconds...")
+                    time.sleep(10)
 
         # Display results
         retrieved_labels_display = [str(label) for label in retrieved_labels]
 
         print(f"\n{'='*70}")
-        print(f"Real-time Classification")
-        print(f"Retrieved classes: {retrieved_labels_display}")  # Show all
+        print(f"{'Fast' if fast_inference else 'Standard'} Classification")
+        print(f"Retrieved classes: {retrieved_labels_display}")
         print(f"LLM Prediction: {prediction}")
         print(f"{'='*70}")
 

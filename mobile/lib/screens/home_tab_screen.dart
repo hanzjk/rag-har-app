@@ -38,8 +38,18 @@ class _HomeTabScreenState extends State<HomeTabScreen>
   final List<double> _gyroZ = [];
   static const int _maxDataPoints = 100;
   Timer? _chartDataTimer;
-  bool _chartsExpanded = false;
+  bool _chartsExpanded = true;
   DateTime? _lastChartDataTimestamp; // Track last added data to avoid duplicates
+
+  // Collection window markers - track start/end positions for visual indicators
+  final List<int> _collectionStartMarkers = []; // Chart indices where collection started
+  final List<int> _collectionEndMarkers = []; // Chart indices where collection ended
+  int _totalDataPointsAdded = 0; // Running count to calculate relative positions
+  RecognitionState? _previousRecognitionState;
+
+  // Next prediction countdown timer
+  Timer? _nextPredictionTimer;
+  int _nextPredictionCountdown = 0;
 
   @override
   void initState() {
@@ -70,7 +80,32 @@ class _HomeTabScreenState extends State<HomeTabScreen>
     _activityAnimationController.dispose();
     _cardFlashController.dispose();
     _stopChartDataPolling();
+    _stopNextPredictionCountdown();
     super.dispose();
+  }
+
+  void _startNextPredictionCountdown() {
+    _stopNextPredictionCountdown();
+    _nextPredictionCountdown = 4;
+    _nextPredictionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _nextPredictionCountdown--;
+        if (_nextPredictionCountdown <= 0) {
+          timer.cancel();
+          _nextPredictionTimer = null;
+        }
+      });
+    });
+  }
+
+  void _stopNextPredictionCountdown() {
+    _nextPredictionTimer?.cancel();
+    _nextPredictionTimer = null;
+    _nextPredictionCountdown = 0;
   }
 
   void _addSensorData(Map<String, double> accel, Map<String, double> gyro) {
@@ -81,6 +116,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       _gyroX.add(gyro['x']!);
       _gyroY.add(gyro['y']!);
       _gyroZ.add(gyro['z']!);
+      _totalDataPointsAdded++;
 
       if (_accelX.length > _maxDataPoints) {
         _accelX.removeAt(0);
@@ -107,6 +143,10 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       _gyroY.clear();
       _gyroZ.clear();
       _lastChartDataTimestamp = null;
+      _collectionStartMarkers.clear();
+      _collectionEndMarkers.clear();
+      _totalDataPointsAdded = 0;
+      _previousRecognitionState = null;
     });
   }
 
@@ -141,6 +181,24 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       _pollCount++;
       final currentState = sensorDataProvider.recognitionState;
       final latestData = sensorDataProvider.latestData;
+
+      // Detect state transitions for collection markers
+      if (_previousRecognitionState != currentState) {
+        // Started collecting - add start marker
+        if (currentState == RecognitionState.collecting) {
+          setState(() {
+            _collectionStartMarkers.add(_totalDataPointsAdded);
+          });
+        }
+        // Stopped collecting - add end marker
+        if (_previousRecognitionState == RecognitionState.collecting &&
+            currentState != RecognitionState.collecting) {
+          setState(() {
+            _collectionEndMarkers.add(_totalDataPointsAdded);
+          });
+        }
+        _previousRecognitionState = currentState;
+      }
 
       // Log every 40 polls (2 seconds)
       if (_pollCount % 40 == 0) {
@@ -268,8 +326,9 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       activityProvider.stopListening();
       activityProvider.setSensorDataCallback(null); // Clear sensor callback
 
-      // Stop chart data polling
+      // Stop chart data polling and countdown
       _stopChartDataPolling();
+      _stopNextPredictionCountdown();
 
       // Disconnect WebSocket if motion capture is also disabled
       if (!appState.motionCaptureEnabled) {
@@ -342,6 +401,11 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                     _activityAnimationController.forward();
                     _cardFlashController.reset();
                     _cardFlashController.forward();
+
+                    // Start next prediction countdown
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _startNextPredictionCountdown();
+                    });
                   }
 
                   // Reset flags when disabled
@@ -480,28 +544,22 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                   const SizedBox(height: 8),
                                 ],
                                 if (isEnabled) ...[
-                                  // Show special UI for first prediction (only when processing)
-                                  if (isWaitingForFirstPrediction) ...[
+                                  // Show state-specific UI
+                                  if (recognitionState == RecognitionState.collecting) ...[
+                                    // Collecting data with progress bar
                                     Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
-                                            SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<
-                                                      Color
-                                                    >(Colors.white),
-                                              ),
+                                            Icon(
+                                              Icons.sensors_rounded,
+                                              color: Colors.white,
+                                              size: 20,
                                             ),
                                             const SizedBox(width: 12),
                                             Text(
-                                              'Processing prediction...',
+                                              'Collecting data...',
                                               style: TextStyle(
                                                 color: Colors.white,
                                                 fontSize: 16,
@@ -510,25 +568,48 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(height: 8),
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            left: 32,
-                                          ),
-                                          child: Text(
-                                            'This may take a few seconds',
-                                            style: TextStyle(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.7,
-                                              ),
-                                              fontSize: 14,
+                                        const SizedBox(height: 12),
+                                        // Progress bar
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(4),
+                                          child: LinearProgressIndicator(
+                                            value: sensorDataProvider.samplesInCurrentWindow /
+                                                   sensorDataProvider.windowSize,
+                                            backgroundColor: Colors.white.withValues(alpha: 0.2),
+                                            valueColor: AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
                                             ),
+                                            minHeight: 6,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ] else if (recognitionState == RecognitionState.waitingForPrediction ||
+                                             isWaitingForFirstPrediction) ...[
+                                    // Processing prediction with spinner
+                                    Row(
+                                      children: [
+                                        SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Text(
+                                          'Processing prediction...',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
                                           ),
                                         ),
                                       ],
                                     ),
                                   ] else ...[
-                                    // Show activity name (no animation here, animation is on header)
+                                    // Show activity name with next prediction countdown
                                     Text(
                                       currentActivity.displayName,
                                       style: TextStyle(
@@ -542,28 +623,36 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                         !activityProvider.activityHistory.first.fastInference) ...[
                                       const SizedBox(height: 4),
                                       Text(
-                                        // Use actual backend reasoning when available (demo mode off)
-                                        // Otherwise use mocked description (demo mode on or no reasoning)
                                         appState.demoModeEnabled ||
-                                                activityProvider
-                                                    .activityHistory
-                                                    .isEmpty
-                                            ? _getActivityDescription(
-                                                currentActivity,
-                                              )
-                                            : (activityProvider
-                                                      .activityHistory
-                                                      .first
-                                                      .reasoning ??
-                                                  _getActivityDescription(
-                                                    currentActivity,
-                                                  )),
+                                                activityProvider.activityHistory.isEmpty
+                                            ? _getActivityDescription(currentActivity)
+                                            : (activityProvider.activityHistory.first.reasoning ??
+                                                _getActivityDescription(currentActivity)),
                                         style: TextStyle(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.8,
-                                          ),
+                                          color: Colors.white.withValues(alpha: 0.8),
                                           fontSize: 14,
                                         ),
+                                      ),
+                                    ],
+                                    // Next prediction countdown
+                                    if (_nextPredictionCountdown > 0) ...[
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.timer_outlined,
+                                            color: Colors.white.withValues(alpha: 0.7),
+                                            size: 14,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'Next prediction in ${_nextPredictionCountdown}s',
+                                            style: TextStyle(
+                                              color: Colors.white.withValues(alpha: 0.7),
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ],
@@ -1085,6 +1174,92 @@ class _HomeTabScreenState extends State<HomeTabScreen>
   //   );
   // }
 
+  // Convert marker position (total data points when marker was added) to chart index
+  double? _markerToChartIndex(int markerPosition) {
+    final chartOffset = _totalDataPointsAdded - _accelX.length;
+    final chartIndex = markerPosition - chartOffset;
+    if (chartIndex < 0 || chartIndex >= _accelX.length) {
+      return null; // Marker is not visible in current chart window
+    }
+    return chartIndex.toDouble();
+  }
+
+  // Build vertical lines for collection start/end markers
+  List<VerticalLine> _buildCollectionMarkerLines(double minY, double maxY) {
+    final lines = <VerticalLine>[];
+
+    // Start markers (green)
+    for (final marker in _collectionStartMarkers) {
+      final chartIndex = _markerToChartIndex(marker);
+      if (chartIndex != null) {
+        lines.add(VerticalLine(
+          x: chartIndex,
+          color: Color(0xFF10B981).withValues(alpha: 0.8),
+          strokeWidth: 2,
+          dashArray: [4, 4],
+        ));
+      }
+    }
+
+    // End markers (red/orange)
+    for (final marker in _collectionEndMarkers) {
+      final chartIndex = _markerToChartIndex(marker);
+      if (chartIndex != null) {
+        lines.add(VerticalLine(
+          x: chartIndex,
+          color: Color(0xFFF59E0B).withValues(alpha: 0.8),
+          strokeWidth: 2,
+          dashArray: [4, 4],
+        ));
+      }
+    }
+
+    return lines;
+  }
+
+  // Build vertical range annotations for shaded collection windows
+  List<VerticalRangeAnnotation> _buildVerticalRangeAnnotations() {
+    final annotations = <VerticalRangeAnnotation>[];
+
+    // Pair up start and end markers to create shaded regions
+    final numPairs = _collectionStartMarkers.length < _collectionEndMarkers.length
+        ? _collectionStartMarkers.length
+        : _collectionEndMarkers.length;
+
+    for (int i = 0; i < numPairs; i++) {
+      final startIndex = _markerToChartIndex(_collectionStartMarkers[i]);
+      final endIndex = _markerToChartIndex(_collectionEndMarkers[i]);
+
+      if (startIndex != null || endIndex != null) {
+        // At least one boundary is visible
+        final visibleStart = startIndex ?? 0.0;
+        final visibleEnd = endIndex ?? _accelX.length.toDouble();
+
+        if (visibleEnd > visibleStart) {
+          annotations.add(VerticalRangeAnnotation(
+            x1: visibleStart,
+            x2: visibleEnd,
+            color: Color(0xFF8B5CF6).withValues(alpha: 0.1),
+          ));
+        }
+      }
+    }
+
+    // Handle ongoing collection (has start but no end yet)
+    if (_collectionStartMarkers.length > _collectionEndMarkers.length) {
+      final startIndex = _markerToChartIndex(_collectionStartMarkers.last);
+      if (startIndex != null) {
+        annotations.add(VerticalRangeAnnotation(
+          x1: startIndex,
+          x2: _accelX.length.toDouble(),
+          color: Color(0xFF10B981).withValues(alpha: 0.15),
+        ));
+      }
+    }
+
+    return annotations;
+  }
+
   Widget _buildSensorChart(String name) {
     List<double> xData, yData, zData;
     double minY, maxY;
@@ -1112,6 +1287,9 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       ySpots.add(FlSpot(i.toDouble(), yData[i]));
       zSpots.add(FlSpot(i.toDouble(), zData[i]));
     }
+
+    // Build collection window markers
+    final markerLines = _buildCollectionMarkerLines(minY, maxY);
 
     if (xSpots.isEmpty || xSpots.length < 10) {
       return Container(
@@ -1193,6 +1371,12 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                   rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 ),
                 borderData: FlBorderData(show: false),
+                extraLinesData: ExtraLinesData(
+                  verticalLines: markerLines,
+                ),
+                rangeAnnotations: RangeAnnotations(
+                  verticalRangeAnnotations: _buildVerticalRangeAnnotations(),
+                ),
                 lineBarsData: [
                   LineChartBarData(
                     spots: xSpots,
@@ -1224,10 +1408,16 @@ class _HomeTabScreenState extends State<HomeTabScreen>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildLegend('X', Color(0xFF8B5CF6)),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               _buildLegend('Y', Color(0xFF10B981)),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               _buildLegend('Z', Color(0xFF3B82F6)),
+              if (_collectionStartMarkers.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                _buildLineLegend('Start', Color(0xFF10B981)),
+                const SizedBox(width: 12),
+                _buildLineLegend('End', Color(0xFFF59E0B)),
+              ],
             ],
           ),
         ],
@@ -1244,6 +1434,29 @@ class _HomeTabScreenState extends State<HomeTabScreen>
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLineLegend(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 2,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(1),
           ),
         ),
         const SizedBox(width: 4),
