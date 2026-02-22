@@ -91,7 +91,10 @@ class _HomeTabScreenState extends State<HomeTabScreen>
 
   void _startNextPredictionCountdown() {
     _stopNextPredictionCountdown();
-    _nextPredictionCountdown = 4;
+    // Set initial value and trigger rebuild immediately
+    setState(() {
+      _nextPredictionCountdown = 4;
+    });
     _nextPredictionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -802,7 +805,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                     Text(
                                       'Active Devices',
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.75),
+                                        color: Colors.white.withValues(alpha: 0.75),
                                         fontSize: 12,
                                         fontWeight: FontWeight.w500,
                                       ),

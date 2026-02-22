@@ -22,6 +22,7 @@ class SensorDataProvider extends ChangeNotifier {
   DateTime? _collectionStartTime;
   StreamSubscription<SensorData>? _subscription;
   StreamSubscription? _predictionSubscription;
+  StreamSubscription? _connectionStateSubscription;
   StreamSubscription<int>? _demoCollectionSubscription;
   String? _currentActivityLabel;
   String _currentMessageType = 'sensor_data';
@@ -95,6 +96,17 @@ class SensorDataProvider extends ChangeNotifier {
     _currentMessageType = 'predict_activity';
     _recognitionState = RecognitionState.idle;
 
+    // Listen for connection state changes to handle disconnection
+    _connectionStateSubscription?.cancel();
+    _connectionStateSubscription = _websocketService.connectionStateStream.listen(
+      (state) {
+        if (state == ConnectionState.disconnected || state == ConnectionState.error) {
+          print('🔌 Connection state changed to $state');
+          _handleWebSocketDisconnect();
+        }
+      },
+    );
+
     // Listen for predictions from server
     print('🎧 Setting up prediction listener...');
     _predictionSubscription = _websocketService.messageStream.listen(
@@ -146,9 +158,13 @@ class SensorDataProvider extends ChangeNotifier {
       },
       onError: (error) {
         print('❌ WebSocket stream error: $error');
+        // Reset state on error to avoid being stuck
+        _handleWebSocketDisconnect();
       },
       onDone: () {
         print('⚠️ WebSocket stream closed!');
+        // Reset state when connection closes to avoid being stuck in waitingForPrediction
+        _handleWebSocketDisconnect();
       },
     );
 
@@ -180,6 +196,26 @@ class SensorDataProvider extends ChangeNotifier {
     // Resume from idle state with countdown
     if (_recognitionState == RecognitionState.idle) {
       _startCollectionWithCountdown();
+    }
+  }
+
+  void _handleWebSocketDisconnect() {
+    // Only reset if we're in an active state (not already idle)
+    if (_recognitionState != RecognitionState.idle) {
+      print('🔌 WebSocket disconnected - resetting to idle state');
+      _subscription?.cancel();
+      _subscription = null;
+      _sensorService.stopStreaming();
+      _keepAliveTimer?.cancel();
+      _keepAliveTimer = null;
+      _autoContinueTimer?.cancel();
+      _autoContinueTimer = null;
+      _countdownTimer?.cancel();
+      _countdownTimer = null;
+      _isCollecting = false;
+      _samplesInCurrentWindow = 0;
+      _recognitionState = RecognitionState.idle;
+      notifyListeners();
     }
   }
 
@@ -274,6 +310,9 @@ class SensorDataProvider extends ChangeNotifier {
       _predictionSubscription = null;
     }
 
+    _connectionStateSubscription?.cancel();
+    _connectionStateSubscription = null;
+
     _countdownTimer?.cancel();
     _countdownTimer = null;
     _autoContinueTimer?.cancel();
@@ -292,6 +331,7 @@ class SensorDataProvider extends ChangeNotifier {
   void dispose() {
     _subscription?.cancel();
     _predictionSubscription?.cancel();
+    _connectionStateSubscription?.cancel();
     _countdownTimer?.cancel();
     _autoContinueTimer?.cancel();
     _keepAliveTimer?.cancel();
