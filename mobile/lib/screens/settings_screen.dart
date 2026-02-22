@@ -545,18 +545,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         color: Color(0xFF111827),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Consumer<AppStateProvider>(
-                      builder: (context, appState, _) => _buildToggleItem(
-                        icon: Icons.science_outlined,
-                        title: 'Demo Mode',
-                        subtitle: 'Use mock data without server connection',
-                        value: appState.demoModeEnabled,
-                        onChanged: (value) {
-                          appState.setDemoModeEnabled(value);
-                        },
-                      ),
-                    ),
+                    
                     const SizedBox(height: 12),
                     InkWell(
                       onTap: _showUrlDialog,

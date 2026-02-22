@@ -196,6 +196,9 @@ class _HomeTabScreenState extends State<HomeTabScreen>
   }
 
   void _startChartDataPolling() {
+    // Cancel any existing timer first to prevent multiple timers
+    _stopChartDataPolling();
+
     final sensorDataProvider = context.read<SensorDataProvider>();
     final appState = context.read<AppStateProvider>();
     final activityProvider = context.read<ActivityProvider>();
@@ -249,26 +252,31 @@ class _HomeTabScreenState extends State<HomeTabScreen>
           mockData['accelerometer']!.cast<String, double>(),
           mockData['gyroscope']!.cast<String, double>(),
         );
-      } else if (currentState != RecognitionState.idle) {
-        // Real mode - get actual sensor data (any active state except idle)
-        // Only add if we have new data (different timestamp)
-        if (latestData != null && latestData.timestamp != _lastChartDataTimestamp) {
-          _lastChartDataTimestamp = latestData.timestamp;
-          _addSensorData(
-            {
-              'x': latestData.accelerometer.x,
-              'y': latestData.accelerometer.y,
-              'z': latestData.accelerometer.z,
-            },
-            {
-              'x': latestData.gyroscope.x,
-              'y': latestData.gyroscope.y,
-              'z': latestData.gyroscope.z,
-            },
-          );
-          // Debug: log chart data count periodically
-          if (_accelX.length % 20 == 0) {
-            print('📈 Chart data points: ${_accelX.length}, state: $currentState');
+      } else if (currentState == RecognitionState.collecting ||
+                 currentState == RecognitionState.waitingForPrediction ||
+                 currentState == RecognitionState.predictionReceived) {
+        // Real mode - get actual sensor data only when collecting or showing prediction
+        // (not during countdown or idle when sensor isn't streaming)
+        if (latestData != null) {
+          // Add data if timestamp is new OR if this is the first data point
+          if (_lastChartDataTimestamp == null || latestData.timestamp != _lastChartDataTimestamp) {
+            _lastChartDataTimestamp = latestData.timestamp;
+            _addSensorData(
+              {
+                'x': latestData.accelerometer.x,
+                'y': latestData.accelerometer.y,
+                'z': latestData.accelerometer.z,
+              },
+              {
+                'x': latestData.gyroscope.x,
+                'y': latestData.gyroscope.y,
+                'z': latestData.gyroscope.z,
+              },
+            );
+            // Debug: log chart data count periodically
+            if (_accelX.length % 20 == 0) {
+              print('📈 Chart data points: ${_accelX.length}, state: $currentState');
+            }
           }
         }
       }
@@ -1353,14 +1361,14 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       xData = _accelX;
       yData = _accelY;
       zData = _accelZ;
-      minY = -12.0;
-      maxY = 12.0;
+      minY = -20.0;
+      maxY = 20.0;
     } else {
       xData = _gyroX;
       yData = _gyroY;
       zData = _gyroZ;
-      minY = -12.0;
-      maxY = 12.0;
+      minY = -20.0;
+      maxY = 20.0;
     }
 
     List<FlSpot> xSpots = [];

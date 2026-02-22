@@ -6,7 +6,7 @@ import '../services/websocket_service.dart' as ws;
 class AppStateProvider extends ChangeNotifier {
   String _websocketUrl = AppConstants.defaultWebSocketUrl;
   ws.ConnectionState _connectionState = ws.ConnectionState.disconnected;
-  bool _activityRecognitionEnabled = true; // Enabled by default
+  bool _activityRecognitionEnabled = false; // Disabled by default
   bool _motionCaptureEnabled = false;
   bool _demoModeEnabled = false;
 
@@ -25,7 +25,7 @@ class AppStateProvider extends ChangeNotifier {
     _websocketUrl =
         prefs.getString(AppConstants.webSocketUrlKey) ?? AppConstants.defaultWebSocketUrl;
     _demoModeEnabled = prefs.getBool('demo_mode_enabled') ?? false;
-    _activityRecognitionEnabled = prefs.getBool('activity_recognition_enabled') ?? true;
+    _activityRecognitionEnabled = prefs.getBool('activity_recognition_enabled') ?? false;
     notifyListeners();
   }
 

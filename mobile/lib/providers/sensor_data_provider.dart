@@ -37,8 +37,10 @@ class SensorDataProvider extends ChangeNotifier {
   Timer? _countdownTimer;
   Timer? _autoContinueTimer;
   Timer? _keepAliveTimer; // Keep WebSocket alive during long predictions
+  Timer? _predictionTimeoutTimer; // Timeout for prediction response
   bool _continuousMode = true; // Enable continuous predictions by default
   bool _fastInference = false; // Enable faster inference with simpler prompts
+  static const Duration _predictionTimeout = Duration(seconds: 60); // Max wait for prediction
 
   SensorData? get latestData => _latestData;
   bool get isCollecting => _isCollecting;
@@ -100,9 +102,23 @@ class SensorDataProvider extends ChangeNotifier {
     _connectionStateSubscription?.cancel();
     _connectionStateSubscription = _websocketService.connectionStateStream.listen(
       (state) {
+        print('🔌 Connection state changed to $state');
         if (state == ConnectionState.disconnected || state == ConnectionState.error) {
-          print('🔌 Connection state changed to $state');
           _handleWebSocketDisconnect();
+        } else if (state == ConnectionState.reconnecting) {
+          // Pause collection during reconnection but don't reset state
+          print('🔄 Connection reconnecting - pausing collection');
+          _subscription?.cancel();
+          _subscription = null;
+          _sensorService.stopStreaming();
+          _isCollecting = false;
+          notifyListeners();
+        } else if (state == ConnectionState.connected) {
+          // Resume if we were collecting when connection dropped
+          if (_recognitionState == RecognitionState.collecting && !_isCollecting) {
+            print('🔄 Connection restored - resuming collection');
+            startCollection();
+          }
         }
       },
     );
@@ -128,9 +144,11 @@ class SensorDataProvider extends ChangeNotifier {
             _subscription = null;
             _sensorService.stopStreaming();
 
-            // Cancel keep-alive timer - prediction received
+            // Cancel timers - prediction received
             _keepAliveTimer?.cancel();
             _keepAliveTimer = null;
+            _predictionTimeoutTimer?.cancel();
+            _predictionTimeoutTimer = null;
 
             // Update state to show prediction received
             _latestPrediction = activity;
@@ -208,6 +226,8 @@ class SensorDataProvider extends ChangeNotifier {
       _sensorService.stopStreaming();
       _keepAliveTimer?.cancel();
       _keepAliveTimer = null;
+      _predictionTimeoutTimer?.cancel();
+      _predictionTimeoutTimer = null;
       _autoContinueTimer?.cancel();
       _autoContinueTimer = null;
       _countdownTimer?.cancel();
@@ -278,6 +298,20 @@ class SensorDataProvider extends ChangeNotifier {
               _websocketService.sendPing();
             }
           });
+
+          // Start prediction timeout timer
+          _predictionTimeoutTimer?.cancel();
+          _predictionTimeoutTimer = Timer(_predictionTimeout, () {
+            if (_recognitionState == RecognitionState.waitingForPrediction) {
+              print('⏰ Prediction timeout - no response in ${_predictionTimeout.inSeconds}s');
+              // Reset and allow retry
+              _keepAliveTimer?.cancel();
+              _keepAliveTimer = null;
+              _recognitionState = RecognitionState.idle;
+              _samplesInCurrentWindow = 0;
+              notifyListeners();
+            }
+          });
         }
         // Don't send to server, just notify for chart updates
         notifyListeners();
@@ -319,6 +353,8 @@ class SensorDataProvider extends ChangeNotifier {
     _autoContinueTimer = null;
     _keepAliveTimer?.cancel();
     _keepAliveTimer = null;
+    _predictionTimeoutTimer?.cancel();
+    _predictionTimeoutTimer = null;
     _collectionStartTime = null;
     _samplesInCurrentWindow = 0;
     _countdown = 0;
@@ -335,6 +371,7 @@ class SensorDataProvider extends ChangeNotifier {
     _countdownTimer?.cancel();
     _autoContinueTimer?.cancel();
     _keepAliveTimer?.cancel();
+    _predictionTimeoutTimer?.cancel();
     _sensorService.dispose();
     super.dispose();
   }

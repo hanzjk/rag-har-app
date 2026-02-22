@@ -229,90 +229,125 @@ async def handle_client(websocket):
 
                 elif message_type == "create_datastore":
                     # Create a new user data store
-                    name = data.get("name", "")
-                    if not name:
+                    if global_classifier is None:
                         response = {
                             "type": "datastore_error",
-                            "error": "Name is required",
+                            "error": "Classifier not initialized",
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                     else:
-                        result = global_classifier.create_datastore(name)
-                        response = {
-                            "type": "datastore_created",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            **result,
-                        }
+                        name = data.get("name", "")
+                        if not name:
+                            response = {
+                                "type": "datastore_error",
+                                "error": "Name is required",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }
+                        else:
+                            result = global_classifier.create_datastore(name)
+                            response = {
+                                "type": "datastore_created",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                **result,
+                            }
                     await websocket.send(json.dumps(response))
-                    logger.info(f"Create datastore request from {client_id}: {name}")
+                    logger.info(f"Create datastore request from {client_id}: {data.get('name', '')}")
 
                 elif message_type == "delete_datastore":
                     # Delete a user data store
-                    collection_name = data.get("collection_name", "")
-                    if not collection_name:
+                    if global_classifier is None:
                         response = {
                             "type": "datastore_error",
-                            "error": "Collection name is required",
+                            "error": "Classifier not initialized",
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                     else:
-                        result = global_classifier.delete_datastore(collection_name)
-                        response = {
-                            "type": "datastore_deleted",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            **result,
-                        }
+                        collection_name = data.get("collection_name", "")
+                        if not collection_name:
+                            response = {
+                                "type": "datastore_error",
+                                "error": "Collection name is required",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }
+                        else:
+                            result = global_classifier.delete_datastore(collection_name)
+                            response = {
+                                "type": "datastore_deleted",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                **result,
+                            }
                     await websocket.send(json.dumps(response))
-                    logger.info(f"Delete datastore request from {client_id}: {collection_name}")
+                    logger.info(f"Delete datastore request from {client_id}: {data.get('collection_name', '')}")
 
                 elif message_type == "list_datastores":
                     # List all available data stores
-                    result = global_classifier.list_datastores()
-                    response = {
-                        "type": "datastores_list",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        **result,
-                    }
+                    if global_classifier is None:
+                        response = {
+                            "type": "datastore_error",
+                            "error": "Classifier not initialized",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                    else:
+                        result = global_classifier.list_datastores()
+                        response = {
+                            "type": "datastores_list",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            **result,
+                        }
                     await websocket.send(json.dumps(response))
                     logger.info(f"List datastores request from {client_id}")
 
                 elif message_type == "set_datastore":
                     # Switch to a different data store
-                    collection_name = data.get("collection_name", "")
-                    if not collection_name:
+                    if global_classifier is None:
                         response = {
                             "type": "datastore_error",
-                            "error": "Collection name is required",
+                            "error": "Classifier not initialized",
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                     else:
-                        success = global_classifier.set_collection(collection_name)
-                        if success:
-                            current = global_classifier.get_current_datastore()
-                            response = {
-                                "type": "datastore_switched",
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "success": True,
-                                **current,
-                            }
-                        else:
+                        collection_name = data.get("collection_name", "")
+                        if not collection_name:
                             response = {
                                 "type": "datastore_error",
-                                "error": f"Data store not found: {collection_name}",
+                                "error": "Collection name is required",
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "success": False,
                             }
+                        else:
+                            success = global_classifier.set_collection(collection_name)
+                            if success:
+                                current = global_classifier.get_current_datastore()
+                                response = {
+                                    "type": "datastore_switched",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "success": True,
+                                    **current,
+                                }
+                            else:
+                                response = {
+                                    "type": "datastore_error",
+                                    "error": f"Data store not found: {collection_name}",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "success": False,
+                                }
                     await websocket.send(json.dumps(response))
-                    logger.info(f"Set datastore request from {client_id}: {collection_name}")
+                    logger.info(f"Set datastore request from {client_id}: {data.get('collection_name', '')}")
 
                 elif message_type == "get_current_datastore":
                     # Get current active data store info
-                    current = global_classifier.get_current_datastore()
-                    response = {
-                        "type": "current_datastore",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        **current,
-                    }
+                    if global_classifier is None:
+                        response = {
+                            "type": "datastore_error",
+                            "error": "Classifier not initialized",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                    else:
+                        current = global_classifier.get_current_datastore()
+                        response = {
+                            "type": "current_datastore",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            **current,
+                        }
                     await websocket.send(json.dumps(response))
                     logger.info(f"Get current datastore request from {client_id}")
 

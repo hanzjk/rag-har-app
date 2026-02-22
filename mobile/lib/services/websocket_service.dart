@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/sensor_data.dart';
 import '../models/activity_type.dart';
@@ -9,6 +10,7 @@ enum ConnectionState {
   connecting,
   connected,
   error,
+  reconnecting,
 }
 
 // Sensor data snapshot for a single point in time
@@ -88,6 +90,7 @@ class ActivityPrediction {
 
 class WebSocketService {
   WebSocketChannel? _channel;
+  StreamSubscription? _channelSubscription;
   final StreamController<ActivityPrediction> _activityController =
       StreamController<ActivityPrediction>.broadcast();
   final StreamController<ConnectionState> _connectionStateController =
@@ -96,17 +99,36 @@ class WebSocketService {
       StreamController<String>.broadcast();
 
   ConnectionState _connectionState = ConnectionState.disconnected;
+  String? _lastUrl;
+
+  // Reconnection settings
+  bool _autoReconnect = true;
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 5;
+  static const Duration _initialReconnectDelay = Duration(seconds: 1);
+  static const Duration _maxReconnectDelay = Duration(seconds: 30);
+  Timer? _reconnectTimer;
+  bool _isDisposed = false;
 
   Stream<ActivityPrediction> get activityStream => _activityController.stream;
   Stream<ConnectionState> get connectionStateStream =>
       _connectionStateController.stream;
   Stream<String> get messageStream => _messageController.stream;
   ConnectionState get connectionState => _connectionState;
+  bool get isConnected => _connectionState == ConnectionState.connected;
+
+  /// Enable or disable automatic reconnection
+  void setAutoReconnect(bool enabled) {
+    _autoReconnect = enabled;
+    if (!enabled) {
+      _cancelReconnect();
+    }
+  }
 
   Future<void> connect(String url) async {
-    // Skip if already connected
-    if (_connectionState == ConnectionState.connected && _channel != null) {
-      print('WebSocketService: Already connected, skipping');
+    // Skip if already connected to the same URL
+    if (_connectionState == ConnectionState.connected && _channel != null && _lastUrl == url) {
+      print('WebSocketService: Already connected to $url, skipping');
       return;
     }
 
@@ -116,11 +138,14 @@ class WebSocketService {
       return;
     }
 
-    // Clear any existing failed channel (don't await close - it may hang)
-    if (_channel != null) {
-      print('WebSocketService: Clearing previous channel');
-      _channel = null;
-    }
+    _lastUrl = url;
+    _cancelReconnect();
+    await _connectInternal(url);
+  }
+
+  Future<void> _connectInternal(String url) async {
+    // Clean up existing connection
+    await _cleanupChannel();
 
     try {
       print('WebSocketService: Attempting to connect to $url');
@@ -142,66 +167,133 @@ class WebSocketService {
       print('WebSocketService: Connection ready!');
 
       _updateConnectionState(ConnectionState.connected);
+      _reconnectAttempts = 0; // Reset on successful connection
 
-      _channel!.stream.listen(
+      _channelSubscription = _channel!.stream.listen(
         (message) {
           print('WebSocketService: Received message: ${message.toString().substring(0, message.toString().length > 100 ? 100 : message.toString().length)}...');
           _handleIncomingMessage(message);
         },
         onError: (error) {
           print('WebSocketService: Stream error: $error');
-          _updateConnectionState(ConnectionState.error);
+          _handleDisconnection(wasError: true);
         },
         onDone: () {
           print('WebSocketService: Stream closed');
-          _updateConnectionState(ConnectionState.disconnected);
+          _handleDisconnection(wasError: false);
         },
+        cancelOnError: false,
       );
     } catch (e) {
       print('WebSocketService: Connection failed: $e');
       _updateConnectionState(ConnectionState.error);
+      _channel = null;
+      _scheduleReconnect();
       rethrow;
     }
   }
 
-  void sendSensorData(SensorData data) {
-    if (_connectionState == ConnectionState.connected && _channel != null) {
-      try {
-        final jsonData = jsonEncode(data.toJson());
-        _channel!.sink.add(jsonData);
-      } catch (e) {
-        print('WebSocketService: Error sending sensor data: $e');
-      }
+  void _handleDisconnection({required bool wasError}) {
+    _updateConnectionState(wasError ? ConnectionState.error : ConnectionState.disconnected);
+    _cleanupChannel();
+
+    if (_autoReconnect && !_isDisposed) {
+      _scheduleReconnect();
     }
   }
 
-  void sendStopCollection() {
-    if (_connectionState == ConnectionState.connected && _channel != null) {
-      try {
-        final stopMessage = jsonEncode({
-          'type': 'stop_collection',
-          'timestamp': DateTime.now().toIso8601String(),
+  void _scheduleReconnect() {
+    if (_isDisposed || !_autoReconnect) return;
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      print('WebSocketService: Max reconnection attempts reached ($_maxReconnectAttempts)');
+      _updateConnectionState(ConnectionState.error);
+      return;
+    }
+
+    // Exponential backoff with jitter
+    final delay = _calculateReconnectDelay();
+    _reconnectAttempts++;
+
+    print('WebSocketService: Scheduling reconnect attempt $_reconnectAttempts/$_maxReconnectAttempts in ${delay.inSeconds}s');
+    _updateConnectionState(ConnectionState.reconnecting);
+
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, () {
+      if (_lastUrl != null && !_isDisposed && _autoReconnect) {
+        print('WebSocketService: Attempting reconnection...');
+        _connectInternal(_lastUrl!).catchError((e) {
+          print('WebSocketService: Reconnection attempt failed: $e');
         });
-        _channel!.sink.add(stopMessage);
-        print('WebSocketService: Sent stop_collection signal');
-      } catch (e) {
-        print('WebSocketService: Error sending stop_collection: $e');
       }
+    });
+  }
+
+  Duration _calculateReconnectDelay() {
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s... capped at 30s
+    final exponentialDelay = _initialReconnectDelay * pow(2, _reconnectAttempts);
+    final cappedDelay = exponentialDelay > _maxReconnectDelay ? _maxReconnectDelay : exponentialDelay;
+
+    // Add jitter (±25%) to prevent thundering herd
+    final jitter = (Random().nextDouble() * 0.5 - 0.25) * cappedDelay.inMilliseconds;
+    return Duration(milliseconds: cappedDelay.inMilliseconds + jitter.toInt());
+  }
+
+  void _cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+  }
+
+  Future<void> _cleanupChannel() async {
+    _channelSubscription?.cancel();
+    _channelSubscription = null;
+
+    try {
+      _channel?.sink.close();
+    } catch (e) {
+      print('WebSocketService: Error closing channel: $e');
+    }
+    _channel = null;
+  }
+
+  /// Send data with error handling and state update on failure
+  bool _safeSend(String data, String operationName) {
+    if (_connectionState != ConnectionState.connected || _channel == null) {
+      print('WebSocketService: Cannot send $operationName - not connected');
+      return false;
+    }
+
+    try {
+      _channel!.sink.add(data);
+      return true;
+    } catch (e) {
+      print('WebSocketService: Error sending $operationName: $e');
+      // Connection likely broken, trigger disconnection handling
+      _handleDisconnection(wasError: true);
+      return false;
+    }
+  }
+
+  void sendSensorData(SensorData data) {
+    final jsonData = jsonEncode(data.toJson());
+    _safeSend(jsonData, 'sensor_data');
+  }
+
+  void sendStopCollection() {
+    final stopMessage = jsonEncode({
+      'type': 'stop_collection',
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (_safeSend(stopMessage, 'stop_collection')) {
+      print('WebSocketService: Sent stop_collection signal');
     }
   }
 
   void sendPing() {
-    if (_connectionState == ConnectionState.connected && _channel != null) {
-      try {
-        final pingMessage = jsonEncode({
-          'type': 'ping',
-          'timestamp': DateTime.now().toIso8601String(),
-        });
-        _channel!.sink.add(pingMessage);
-      } catch (e) {
-        print('WebSocketService: Error sending ping: $e');
-      }
-    }
+    final pingMessage = jsonEncode({
+      'type': 'ping',
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    _safeSend(pingMessage, 'ping');
   }
 
   void _handleIncomingMessage(dynamic message) {
@@ -235,7 +327,10 @@ class WebSocketService {
       }
 
       if (activity != null) {
-        print('🎯 Adding prediction to activityStream: $activity (fastInference: $fastInference, reasoning: ${reasoning?.substring(0, reasoning.length > 50 ? 50 : reasoning.length)}...)');
+        final reasoningPreview = reasoning != null
+            ? reasoning.substring(0, reasoning.length > 50 ? 50 : reasoning.length)
+            : 'none';
+        print('WebSocketService: Adding prediction to activityStream: $activity (fastInference: $fastInference, reasoning: $reasoningPreview...)');
         _activityController.add(
           ActivityPrediction(
             activity: ActivityType.fromString(activity),
@@ -244,106 +339,97 @@ class WebSocketService {
             fastInference: fastInference,
           ),
         );
-        print('✅ Prediction added to activityStream');
+        print('WebSocketService: Prediction added to activityStream');
       }
-    } catch (e) {
-      // Error parsing incoming message: $e
+    } catch (e, stackTrace) {
+      // Log parsing errors instead of silently swallowing them
+      print('WebSocketService: Error parsing incoming message: $e');
+      print('WebSocketService: Message was: ${message.toString().substring(0, min(200, message.toString().length))}');
+      print('WebSocketService: Stack trace: $stackTrace');
     }
   }
 
   void _updateConnectionState(ConnectionState state) {
-    _connectionState = state;
-    _connectionStateController.add(state);
+    if (_connectionState != state) {
+      print('WebSocketService: Connection state changed: $_connectionState -> $state');
+      _connectionState = state;
+      _connectionStateController.add(state);
+    }
   }
 
   void disconnect() {
-    _channel?.sink.close();
-    _channel = null;
+    _autoReconnect = false; // Disable auto-reconnect on manual disconnect
+    _cancelReconnect();
+    _cleanupChannel();
     _updateConnectionState(ConnectionState.disconnected);
+  }
+
+  /// Reset reconnection state (call when user manually triggers reconnect)
+  void resetReconnection() {
+    _reconnectAttempts = 0;
+    _autoReconnect = true;
   }
 
   // ==================== Data Store Management ====================
 
   void createDatastore(String name) {
-    if (_connectionState == ConnectionState.connected && _channel != null) {
-      try {
-        final message = jsonEncode({
-          'type': 'create_datastore',
-          'name': name,
-          'timestamp': DateTime.now().toIso8601String(),
-        });
-        _channel!.sink.add(message);
-        print('WebSocketService: Sent create_datastore request for: $name');
-      } catch (e) {
-        print('WebSocketService: Error sending create_datastore: $e');
-      }
+    final message = jsonEncode({
+      'type': 'create_datastore',
+      'name': name,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (_safeSend(message, 'create_datastore')) {
+      print('WebSocketService: Sent create_datastore request for: $name');
     }
   }
 
   void deleteDatastore(String collectionName) {
-    if (_connectionState == ConnectionState.connected && _channel != null) {
-      try {
-        final message = jsonEncode({
-          'type': 'delete_datastore',
-          'collection_name': collectionName,
-          'timestamp': DateTime.now().toIso8601String(),
-        });
-        _channel!.sink.add(message);
-        print('WebSocketService: Sent delete_datastore request for: $collectionName');
-      } catch (e) {
-        print('WebSocketService: Error sending delete_datastore: $e');
-      }
+    final message = jsonEncode({
+      'type': 'delete_datastore',
+      'collection_name': collectionName,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (_safeSend(message, 'delete_datastore')) {
+      print('WebSocketService: Sent delete_datastore request for: $collectionName');
     }
   }
 
   void listDatastores() {
-    if (_connectionState == ConnectionState.connected && _channel != null) {
-      try {
-        final message = jsonEncode({
-          'type': 'list_datastores',
-          'timestamp': DateTime.now().toIso8601String(),
-        });
-        _channel!.sink.add(message);
-        print('WebSocketService: Sent list_datastores request');
-      } catch (e) {
-        print('WebSocketService: Error sending list_datastores: $e');
-      }
+    final message = jsonEncode({
+      'type': 'list_datastores',
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (_safeSend(message, 'list_datastores')) {
+      print('WebSocketService: Sent list_datastores request');
     }
   }
 
   void setDatastore(String collectionName) {
-    if (_connectionState == ConnectionState.connected && _channel != null) {
-      try {
-        final message = jsonEncode({
-          'type': 'set_datastore',
-          'collection_name': collectionName,
-          'timestamp': DateTime.now().toIso8601String(),
-        });
-        _channel!.sink.add(message);
-        print('WebSocketService: Sent set_datastore request for: $collectionName');
-      } catch (e) {
-        print('WebSocketService: Error sending set_datastore: $e');
-      }
+    final message = jsonEncode({
+      'type': 'set_datastore',
+      'collection_name': collectionName,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (_safeSend(message, 'set_datastore')) {
+      print('WebSocketService: Sent set_datastore request for: $collectionName');
     }
   }
 
   void getCurrentDatastore() {
-    if (_connectionState == ConnectionState.connected && _channel != null) {
-      try {
-        final message = jsonEncode({
-          'type': 'get_current_datastore',
-          'timestamp': DateTime.now().toIso8601String(),
-        });
-        _channel!.sink.add(message);
-        print('WebSocketService: Sent get_current_datastore request');
-      } catch (e) {
-        print('WebSocketService: Error sending get_current_datastore: $e');
-      }
+    final message = jsonEncode({
+      'type': 'get_current_datastore',
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (_safeSend(message, 'get_current_datastore')) {
+      print('WebSocketService: Sent get_current_datastore request');
     }
   }
 
   void dispose() {
-    disconnect();
+    _isDisposed = true;
+    _autoReconnect = false;
+    _cancelReconnect();
+    _cleanupChannel();
     _activityController.close();
     _connectionStateController.close();
     _messageController.close();

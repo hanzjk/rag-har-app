@@ -750,11 +750,11 @@ class ProgressScreen extends StatelessWidget {
                         },
                       ),
                     ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
         ),
       ],
     );
