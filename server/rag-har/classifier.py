@@ -9,6 +9,8 @@ import os
 import re
 import time
 import logging
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Any
 
 import pandas as pd
@@ -23,6 +25,9 @@ from sklearn.metrics import f1_score
 from feature_utils import FeatureExtractorUtils
 
 load_dotenv()
+
+# Thread pool for async prediction execution (allows parallel predictions)
+_prediction_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="rag_predictor")
 
 # Suppress httpx logs
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -797,6 +802,27 @@ Explanation rules:
         except Exception as e:
             logger.error(f"Error in predict_from_window: {e}", exc_info=True)
             return {"activity": "unknown"}
+
+    async def predict_from_window_async(
+        self, window_data: list, fast_inference: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Async version of predict_from_window for parallel prediction processing.
+
+        Runs the blocking prediction in a thread pool to avoid blocking the event loop.
+
+        Args:
+            window_data: List of sensor reading dicts
+            fast_inference: If True, use faster inference with simpler prompts
+
+        Returns:
+            Dict with 'activity' (predicted label) and 'reasoning'
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            _prediction_executor,
+            lambda: self.predict_from_window(window_data, fast_inference)
+        )
 
     def evaluate_on_test_set(self) -> Dict[str, Any]:
         """

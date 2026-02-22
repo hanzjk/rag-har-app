@@ -13,7 +13,7 @@ import argparse
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Set, Optional
+from typing import Set, Optional, Dict
 import websockets
 
 from data_collector import DataCollector
@@ -66,6 +66,33 @@ async def handle_client(websocket):
 
     # Track if we're in an active prediction session
     prediction_session_active = False
+
+    # Parallel prediction support
+    prediction_semaphore = asyncio.Semaphore(3)  # Max 3 concurrent predictions
+    pending_tasks: Set[asyncio.Task] = set()
+
+    async def process_prediction_async(window_id: str, window_data: list, fast_inference: bool):
+        """Process a single prediction asynchronously."""
+        async with prediction_semaphore:
+            logger.info(f"Starting prediction for window {window_id}")
+            prediction = await client_predictor.predict_async(
+                window_id, window_data, fast_inference
+            )
+
+            # Log prediction window if enabled
+            if prediction.get("activity") not in ["error", "unknown"]:
+                client_prediction_logger.log_prediction_window(window_data, prediction)
+
+            try:
+                # Send prediction back (order may vary due to async)
+                await websocket.send(json.dumps(prediction))
+                logger.info(
+                    f"Sent prediction for window {window_id}: {prediction['activity']}"
+                )
+            except websockets.exceptions.ConnectionClosed:
+                logger.info(
+                    f"Client {client_id} disconnected while sending prediction {window_id}"
+                )
 
     try:
         async for message in websocket:
@@ -176,7 +203,7 @@ async def handle_client(websocket):
                     client_collector = None
 
                 elif message_type == "predict_activity":
-                    # Activity recognition mode
+                    # Activity recognition mode - continuous collection with async predictions
                     logger.debug(
                         f"Received prediction request from {client_id} at {timestamp}"
                     )
@@ -190,42 +217,27 @@ async def handle_client(websocket):
                     # Extract fast_inference flag from the message
                     fast_inference = data.get("fast_inference", False)
 
-                    # Predict activity using client-specific predictor
-                    # Returns None if not at step boundary (step_size feature)
-                    prediction = client_predictor.predict(data, fast_inference=fast_inference)
+                    # Capture window (non-blocking) - returns (window_id, data) when ready
+                    result = client_predictor.capture_window(data)
 
-                    # Only send prediction if one was generated (not None)
-                    if prediction is not None:
-                        # Log prediction window if enabled
-                        if prediction.get("window_data"):
-                            client_prediction_logger.log_prediction_window(
-                                prediction["window_data"], prediction
-                            )
+                    if result is not None:
+                        window_id, window_data = result
 
-                        # Remove window_data before sending to client (too large)
-                        prediction_to_send = {
-                            k: v for k, v in prediction.items() if k != "window_data"
+                        # Send immediate acknowledgment that window was received
+                        ack = {
+                            "type": "window_received",
+                            "window_id": window_id,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
+                        await websocket.send(json.dumps(ack))
+                        logger.info(f"Window {window_id} acknowledged, starting async prediction")
 
-                        try:
-                            # Send prediction back to client
-                            await websocket.send(json.dumps(prediction_to_send))
-
-                            # Mark session as inactive after sending prediction
-                            # Next batch will start fresh
-                            prediction_session_active = False
-
-                            # Only log non-buffering predictions
-                            if prediction.get("status") != "buffering":
-                                logger.info(
-                                    f"Sent prediction to {client_id}: {prediction['activity']} "
-                                    f"[window:{prediction.get('window_size', 0)}]"
-                                )
-                        except websockets.exceptions.ConnectionClosed:
-                            logger.info(
-                                f"Client {client_id} disconnected while sending prediction"
-                            )
-                            break
+                        # Start async prediction (fire and forget)
+                        task = asyncio.create_task(
+                            process_prediction_async(window_id, window_data, fast_inference)
+                        )
+                        pending_tasks.add(task)
+                        task.add_done_callback(pending_tasks.discard)
 
                 elif message_type == "create_datastore":
                     # Create a new user data store
@@ -370,6 +382,12 @@ async def handle_client(websocket):
         if sample_count > 0:
             logger.info(f"Total samples collected from {client_id}: {sample_count}")
     finally:
+        # Cancel all pending prediction tasks
+        if pending_tasks:
+            logger.info(f"Cancelling {len(pending_tasks)} pending predictions for {client_id}")
+            for task in pending_tasks:
+                task.cancel()
+
         # Clean up per-client resources
         logger.info(f"Cleaning up resources for client: {client_id}")
         client_predictor.reset_window()

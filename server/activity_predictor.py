@@ -6,8 +6,10 @@ Uses sliding window approach with RAG-based classifier.
 
 import logging
 import math
+import uuid
+import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 from collections import deque
 import pandas as pd
 
@@ -93,6 +95,110 @@ class ActivityPredictor:
                 f"Window: {len(self.window)}/{self.window_size}"
             )
             return None  # No prediction this sample
+
+    def capture_window(self, sensor_data: dict) -> Optional[Tuple[str, list]]:
+        """
+        Add sensor data to window and capture completed windows for async prediction.
+
+        This method is NON-BLOCKING - it captures the window and returns immediately.
+        The caller is responsible for submitting the window for async prediction.
+
+        Args:
+            sensor_data: Dictionary containing sensor readings
+
+        Returns:
+            Tuple of (window_id, window_data) when a complete window is ready,
+            None otherwise (still buffering)
+        """
+        # Add new sample to sliding window
+        self._add_to_window(sensor_data)
+
+        # Increment counter
+        self.samples_since_last_prediction += 1
+
+        # Check if we have a complete window at step boundary
+        if self.samples_since_last_prediction >= self.step_size:
+            if len(self.window) >= self.min_samples:
+                # Generate unique window ID
+                window_id = str(uuid.uuid4())[:8]
+                # Capture window data (copy since window will continue to be used)
+                window_data = list(self.window)
+                self.samples_since_last_prediction = 0
+
+                logger.info(
+                    f"Window {window_id} captured with {len(window_data)} samples"
+                )
+                return (window_id, window_data)
+            else:
+                # Not enough samples yet, reset counter
+                self.samples_since_last_prediction = 0
+                logger.warning(
+                    f"Step boundary reached but insufficient samples: "
+                    f"{len(self.window)}/{self.min_samples}"
+                )
+                return None
+        return None
+
+    async def predict_async(
+        self, window_id: str, window_data: list, fast_inference: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Async prediction method for parallel processing.
+
+        Args:
+            window_id: Unique identifier for this window
+            window_data: List of sensor reading dicts
+            fast_inference: If True, use faster inference
+
+        Returns:
+            Prediction dict with window_id for correlation
+        """
+        if not self.classifier:
+            logger.error(f"No classifier available for window {window_id}")
+            return {
+                "type": "activity_prediction",
+                "window_id": window_id,
+                "activity": "error",
+                "error": "RAG classifier not initialized",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+        try:
+            logger.info(
+                f"Starting async prediction for window {window_id} "
+                f"({len(window_data)} samples, fast_inference={fast_inference})"
+            )
+
+            # Use the classifier's async method
+            result = await self.classifier.predict_from_window_async(
+                window_data, fast_inference=fast_inference
+            )
+
+            logger.info(f"Async prediction complete for window {window_id}: {result['activity']}")
+
+            return {
+                "type": "activity_prediction",
+                "window_id": window_id,
+                "activity": result["activity"],
+                "reasoning": result.get("reasoning"),
+                "fast_inference": fast_inference,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "window_size": len(window_data),
+                "method": "rag_classifier",
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Error in async prediction for window {window_id}: {e}",
+                exc_info=True
+            )
+            return {
+                "type": "activity_prediction",
+                "window_id": window_id,
+                "activity": "unknown",
+                "error": str(e),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
 
     def _add_to_window(self, sensor_data: dict):
         """

@@ -50,6 +50,7 @@ class ActivityPrediction {
   final String? reasoning;
   final bool fastInference;
   final List<SensorSnapshot>? sensorData; // Sensor data window for this prediction
+  final String? windowId; // Window ID for correlation with continuous collection
 
   ActivityPrediction({
     required this.activity,
@@ -57,6 +58,7 @@ class ActivityPrediction {
     this.reasoning,
     this.fastInference = false,
     this.sensorData,
+    this.windowId,
   });
 
   // JSON serialization for persistence
@@ -66,6 +68,7 @@ class ActivityPrediction {
     'reasoning': reasoning,
     'fast_inference': fastInference,
     'sensor_data': sensorData?.map((s) => s.toJson()).toList(),
+    'window_id': windowId,
   };
 
   factory ActivityPrediction.fromJson(Map<String, dynamic> json) {
@@ -84,8 +87,17 @@ class ActivityPrediction {
       reasoning: json['reasoning'],
       fastInference: json['fast_inference'] ?? false,
       sensorData: sensorData,
+      windowId: json['window_id'],
     );
   }
+}
+
+/// Window acknowledgment from server (for continuous collection tracking)
+class WindowAcknowledgment {
+  final String windowId;
+  final DateTime timestamp;
+
+  WindowAcknowledgment({required this.windowId, required this.timestamp});
 }
 
 class WebSocketService {
@@ -97,6 +109,8 @@ class WebSocketService {
       StreamController<ConnectionState>.broadcast();
   final StreamController<String> _messageController =
       StreamController<String>.broadcast();
+  final StreamController<WindowAcknowledgment> _windowAckController =
+      StreamController<WindowAcknowledgment>.broadcast();
 
   ConnectionState _connectionState = ConnectionState.disconnected;
   String? _lastUrl;
@@ -114,6 +128,7 @@ class WebSocketService {
   Stream<ConnectionState> get connectionStateStream =>
       _connectionStateController.stream;
   Stream<String> get messageStream => _messageController.stream;
+  Stream<WindowAcknowledgment> get windowAckStream => _windowAckController.stream;
   ConnectionState get connectionState => _connectionState;
   bool get isConnected => _connectionState == ConnectionState.connected;
 
@@ -302,12 +317,25 @@ class WebSocketService {
       _messageController.add(message.toString());
 
       final data = jsonDecode(message.toString());
+      final messageType = data['type'];
+
+      // Handle window acknowledgment (for continuous collection)
+      if (messageType == 'window_received') {
+        final windowId = data['window_id'] as String;
+        print('WebSocketService: Window $windowId acknowledged by server');
+        _windowAckController.add(WindowAcknowledgment(
+          windowId: windowId,
+          timestamp: DateTime.now(),
+        ));
+        return;
+      }
 
       String? activity;
       String? reasoning;
+      String? windowId;
       bool fastInference = false;
 
-      if (data['type'] == 'activity_prediction') {
+      if (messageType == 'activity_prediction') {
         // Skip buffering/initializing predictions
         final status = data['status'];
         final activityName = data['activity'];
@@ -320,6 +348,7 @@ class WebSocketService {
         activity = activityName;
         reasoning = data['reasoning'];  // Extract reasoning if present
         fastInference = data['fast_inference'] ?? false;
+        windowId = data['window_id'];  // Extract window_id for correlation
       } else if (data.containsKey('prediction')) {
         activity = data['prediction'];
         reasoning = data['reasoning'];  // Extract reasoning if present
@@ -330,13 +359,14 @@ class WebSocketService {
         final reasoningPreview = reasoning != null
             ? reasoning.substring(0, reasoning.length > 50 ? 50 : reasoning.length)
             : 'none';
-        print('WebSocketService: Adding prediction to activityStream: $activity (fastInference: $fastInference, reasoning: $reasoningPreview...)');
+        print('WebSocketService: Adding prediction to activityStream: $activity (windowId: $windowId, fastInference: $fastInference, reasoning: $reasoningPreview...)');
         _activityController.add(
           ActivityPrediction(
             activity: ActivityType.fromString(activity),
             timestamp: DateTime.now(),
             reasoning: reasoning,
             fastInference: fastInference,
+            windowId: windowId,
           ),
         );
         print('WebSocketService: Prediction added to activityStream');
@@ -433,6 +463,7 @@ class WebSocketService {
     _activityController.close();
     _connectionStateController.close();
     _messageController.close();
+    _windowAckController.close();
   }
 }
 

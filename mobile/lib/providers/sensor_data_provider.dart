@@ -7,9 +7,7 @@ import '../services/websocket_service.dart';
 enum RecognitionState {
   idle,
   countdown,
-  collecting,
-  waitingForPrediction,
-  predictionReceived,
+  collecting,  // Continuous collection - predictions arrive asynchronously
 }
 
 class SensorDataProvider extends ChangeNotifier {
@@ -26,19 +24,22 @@ class SensorDataProvider extends ChangeNotifier {
   String? _currentActivityLabel;
   String _currentMessageType = 'sensor_data';
 
-  // Window-based collection for manual continuation
+  // Window-based collection for continuous mode
   int _samplesInCurrentWindow = 0;
   RecognitionState _recognitionState = RecognitionState.idle;
   String? _latestPrediction;
   static const int _windowSize = 200; // 4 seconds at 50Hz
   int _countdown = 0;
   Timer? _countdownTimer;
-  Timer? _autoContinueTimer;
   Timer? _keepAliveTimer; // Keep WebSocket alive during long predictions
-  Timer? _predictionTimeoutTimer; // Timeout for prediction response
   bool _continuousMode = true; // Enable continuous predictions by default
   bool _fastInference = false; // Enable faster inference with simpler prompts
-  static const Duration _predictionTimeout = Duration(seconds: 60); // Max wait for prediction
+
+  // Continuous collection with parallel predictions
+  int _currentWindowNumber = 0; // Increments each time a window completes
+  int _highestDisplayedWindow = -1; // Track highest displayed to skip stale
+  int _pendingPredictions = 0; // Track how many predictions are pending
+  StreamSubscription? _windowAckSubscription;
 
   SensorData? get latestData => _latestData;
   bool get isCollecting => _isCollecting;
@@ -54,12 +55,12 @@ class SensorDataProvider extends ChangeNotifier {
   int get countdown => _countdown;
 
   // Convenience getters for UI
-  bool get isWaitingForPrediction =>
-      _recognitionState == RecognitionState.waitingForPrediction;
-  bool get isPredictionReceived =>
-      _recognitionState == RecognitionState.predictionReceived;
+  bool get isWaitingForPrediction => _pendingPredictions > 0;
+  bool get isPredictionReceived => _latestPrediction != null;
   bool get continuousMode => _continuousMode;
   bool get fastInference => _fastInference;
+  int get pendingPredictions => _pendingPredictions;
+  int get currentWindowNumber => _currentWindowNumber;
 
   Duration get collectionDuration {
     if (_collectionStartTime == null) return Duration.zero;
@@ -95,6 +96,9 @@ class SensorDataProvider extends ChangeNotifier {
   void startActivityRecognition() {
     _currentMessageType = 'predict_activity';
     _recognitionState = RecognitionState.idle;
+    _currentWindowNumber = 0;
+    _highestDisplayedWindow = -1;
+    _pendingPredictions = 0;
 
     // Listen for connection state changes to handle disconnection
     _connectionStateSubscription?.cancel();
@@ -121,65 +125,49 @@ class SensorDataProvider extends ChangeNotifier {
       },
     );
 
-    // Listen for predictions from server
+    // Listen for window acknowledgments (continuous collection)
+    _windowAckSubscription?.cancel();
+    _windowAckSubscription = _websocketService.windowAckStream.listen(
+      (ack) {
+        print('📬 Window ${ack.windowId} acknowledged by server');
+        // Acknowledgment received - window is being processed
+      },
+    );
+
+    // Listen for predictions from server (may arrive out of order)
     print('🎧 Setting up prediction listener...');
     _predictionSubscription = _websocketService.messageStream.listen(
       (message) {
-        print(
-          '📨 Raw WebSocket message received: ${message.substring(0, message.length > 100 ? 100 : message.length)}...',
-        );
         try {
           final data = jsonDecode(message);
-          print('📦 Parsed message type: ${data['type']}');
 
           if (data['type'] == 'activity_prediction') {
             final activity = data['activity'];
-            print('📥 Received prediction: $activity');
+            final windowId = data['window_id'] as String?;
 
-            // IMMEDIATELY stop sensor collection when prediction arrives
-            print('🛑 Stopping sensor collection (prediction received)');
-            _subscription?.cancel();
-            _subscription = null;
-            _sensorService.stopStreaming();
-
-            // Cancel timers - prediction received
-            _keepAliveTimer?.cancel();
-            _keepAliveTimer = null;
-            _predictionTimeoutTimer?.cancel();
-            _predictionTimeoutTimer = null;
-
-            // Update state to show prediction received
-            _latestPrediction = activity;
-            _recognitionState = RecognitionState.predictionReceived;
-            _isCollecting = false;
-
-            notifyListeners();
-
-            // If continuous mode is enabled, automatically start next window after 4 seconds
-            if (_continuousMode) {
-              print('🔄 Continuous mode: Starting next window in 4 seconds...');
-              _autoContinueTimer?.cancel();
-              _autoContinueTimer = Timer(const Duration(seconds: 4), () {
-                if (_recognitionState == RecognitionState.predictionReceived) {
-                  print('🔄 Auto-continuing to next window (no countdown)');
-                  collectNextWindow();
-                }
-              });
+            // Decrement pending count
+            if (_pendingPredictions > 0) {
+              _pendingPredictions--;
             }
+
+            // Extract window number from windowId (format: "abc12345")
+            // For now, just display latest prediction (skip stale ones based on tracking)
+            print('📥 Received prediction: $activity (window: $windowId, pending: $_pendingPredictions)');
+
+            // Always show the latest prediction (skip stale check for simplicity)
+            _latestPrediction = activity;
+            notifyListeners();
           }
         } catch (e) {
           print('❌ Error parsing prediction: $e');
-          print('❌ Message was: $message');
         }
       },
       onError: (error) {
         print('❌ WebSocket stream error: $error');
-        // Reset state on error to avoid being stuck
         _handleWebSocketDisconnect();
       },
       onDone: () {
         print('⚠️ WebSocket stream closed!');
-        // Reset state when connection closes to avoid being stuck in waitingForPrediction
         _handleWebSocketDisconnect();
       },
     );
@@ -224,14 +212,13 @@ class SensorDataProvider extends ChangeNotifier {
       _sensorService.stopStreaming();
       _keepAliveTimer?.cancel();
       _keepAliveTimer = null;
-      _predictionTimeoutTimer?.cancel();
-      _predictionTimeoutTimer = null;
-      _autoContinueTimer?.cancel();
-      _autoContinueTimer = null;
       _countdownTimer?.cancel();
       _countdownTimer = null;
       _isCollecting = false;
       _samplesInCurrentWindow = 0;
+      _currentWindowNumber = 0;
+      _pendingPredictions = 0;
+      _highestDisplayedWindow = -1;
       _recognitionState = RecognitionState.idle;
       notifyListeners();
     }
@@ -264,6 +251,15 @@ class SensorDataProvider extends ChangeNotifier {
     _collectionStartTime = DateTime.now();
     notifyListeners();
 
+    // Start keep-alive timer for long predictions
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (_pendingPredictions > 0) {
+        print('💓 Keep-alive ping ($_pendingPredictions predictions pending)');
+        _websocketService.sendPing();
+      }
+    });
+
     _subscription = _sensorService.getSensorStream().listen((data) {
       // Always update latestData for chart display
       final labeledData = SensorData(
@@ -276,53 +272,25 @@ class SensorDataProvider extends ChangeNotifier {
       );
       _latestData = labeledData;
 
-      // For activity recognition mode, check if window is complete
-      if (_currentMessageType == 'predict_activity' &&
-          _samplesInCurrentWindow >= _windowSize) {
-        // Only transition to waiting state if not already waiting or received
-        if (_recognitionState == RecognitionState.collecting) {
-          print(
-            '✅ Window complete ($_samplesInCurrentWindow samples). Waiting for prediction...',
-          );
-          _recognitionState = RecognitionState.waitingForPrediction;
-          _isCollecting = false;
-
-          // Start keep-alive timer to prevent connection timeout during long RAG predictions
-          _keepAliveTimer?.cancel();
-          _keepAliveTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-            if (_recognitionState == RecognitionState.waitingForPrediction) {
-              print('💓 Keep-alive ping (waiting for prediction)');
-              // Send a ping message to keep connection alive
-              _websocketService.sendPing();
-            }
-          });
-
-          // Start prediction timeout timer
-          _predictionTimeoutTimer?.cancel();
-          _predictionTimeoutTimer = Timer(_predictionTimeout, () {
-            if (_recognitionState == RecognitionState.waitingForPrediction) {
-              print('⏰ Prediction timeout - no response in ${_predictionTimeout.inSeconds}s');
-              // Reset and allow retry
-              _keepAliveTimer?.cancel();
-              _keepAliveTimer = null;
-              _recognitionState = RecognitionState.idle;
-              _samplesInCurrentWindow = 0;
-              notifyListeners();
-            }
-          });
-        }
-        // Don't send to server, just notify for chart updates
-        notifyListeners();
-        return;
-      }
-
-      // Send to server only during active collection
+      // Send to server (continuous - don't stop)
       _websocketService.sendSensorData(labeledData);
       _packetsSent++;
 
       if (_currentMessageType == 'predict_activity') {
         _samplesInCurrentWindow++;
-        print('📊 Sample ${_samplesInCurrentWindow}/$_windowSize sent');
+
+        // Check if window is complete
+        if (_samplesInCurrentWindow >= _windowSize) {
+          // Window complete - increment counter and reset for next window
+          _currentWindowNumber++;
+          _pendingPredictions++;
+          print(
+            '✅ Window $_currentWindowNumber complete ($_samplesInCurrentWindow samples). '
+            'Continuing collection (pending: $_pendingPredictions)',
+          );
+          _samplesInCurrentWindow = 0;  // Reset for next window
+          // Don't stop - continue collecting!
+        }
       }
 
       notifyListeners();
@@ -345,16 +313,18 @@ class SensorDataProvider extends ChangeNotifier {
     _connectionStateSubscription?.cancel();
     _connectionStateSubscription = null;
 
+    _windowAckSubscription?.cancel();
+    _windowAckSubscription = null;
+
     _countdownTimer?.cancel();
     _countdownTimer = null;
-    _autoContinueTimer?.cancel();
-    _autoContinueTimer = null;
     _keepAliveTimer?.cancel();
     _keepAliveTimer = null;
-    _predictionTimeoutTimer?.cancel();
-    _predictionTimeoutTimer = null;
     _collectionStartTime = null;
     _samplesInCurrentWindow = 0;
+    _currentWindowNumber = 0;
+    _pendingPredictions = 0;
+    _highestDisplayedWindow = -1;
     _countdown = 0;
     _recognitionState = RecognitionState.idle;
     _latestPrediction = null;
@@ -366,10 +336,9 @@ class SensorDataProvider extends ChangeNotifier {
     _subscription?.cancel();
     _predictionSubscription?.cancel();
     _connectionStateSubscription?.cancel();
+    _windowAckSubscription?.cancel();
     _countdownTimer?.cancel();
-    _autoContinueTimer?.cancel();
     _keepAliveTimer?.cancel();
-    _predictionTimeoutTimer?.cancel();
     _sensorService.dispose();
     super.dispose();
   }
