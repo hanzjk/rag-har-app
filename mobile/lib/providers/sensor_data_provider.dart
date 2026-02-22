@@ -23,10 +23,8 @@ class SensorDataProvider extends ChangeNotifier {
   StreamSubscription<SensorData>? _subscription;
   StreamSubscription? _predictionSubscription;
   StreamSubscription? _connectionStateSubscription;
-  StreamSubscription<int>? _demoCollectionSubscription;
   String? _currentActivityLabel;
   String _currentMessageType = 'sensor_data';
-  bool _isDemoMode = false;
 
   // Window-based collection for manual continuation
   int _samplesInCurrentWindow = 0;

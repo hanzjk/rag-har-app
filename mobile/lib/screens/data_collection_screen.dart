@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/sensor_data_provider.dart';
-import '../providers/activity_provider.dart';
 import '../providers/device_info_provider.dart';
 import '../services/permission_service.dart';
 import '../services/websocket_service.dart';
@@ -23,9 +22,6 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   bool _isInitialized = false;
   String _selectedActivityLabel = 'walking';
   bool _showStatistics = true;
-  bool _isDemoCollecting = false;
-  int _demoSamplesCollected = 0;
-  DateTime? _demoCollectionStartTime;
 
   // Live chart data - store last 100 points (2 seconds at 50Hz)
   final List<double> _accelX = [];
@@ -36,8 +32,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   final List<double> _gyroZ = [];
   static const int _maxDataPoints = 100;
 
-  StreamSubscription? _demoDataSubscription;
-  Timer? _demoDataTimer;
+  Timer? _chartDataTimer;
 
   @override
   void didChangeDependencies() {
@@ -55,8 +50,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
     }
   }
 
-  bool _isCollecting(SensorDataProvider sensorData, AppStateProvider appState) {
-    return appState.demoModeEnabled ? _isDemoCollecting : sensorData.isCollecting;
+  bool _isCollecting(SensorDataProvider sensorData) {
+    return sensorData.isCollecting;
   }
 
   void _addSensorData(Map<String, double> accel, Map<String, double> gyro) {
@@ -95,9 +90,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
   Future<void> _toggleCollection() async {
     final sensorDataProvider = context.read<SensorDataProvider>();
     final appState = context.read<AppStateProvider>();
-    final activityProvider = context.read<ActivityProvider>();
 
-    final isCurrentlyCollecting = _isCollecting(sensorDataProvider, appState);
+    final isCurrentlyCollecting = _isCollecting(sensorDataProvider);
 
     if (!isCurrentlyCollecting) {
       // Check sensor permissions
@@ -118,68 +112,31 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
         // Clear previous sensor data
         _clearSensorData();
 
-        // Check if in demo mode
-        if (appState.demoModeEnabled) {
-          // Demo mode - start mock collection without WebSocket
-          setState(() {
-            _isDemoCollecting = true;
-            _demoSamplesCollected = 0;
-            _demoCollectionStartTime = DateTime.now();
-          });
+        // Connect to WebSocket
+        await _websocketService!.connect(appState.websocketUrl);
+        sensorDataProvider.setActivityLabel(_selectedActivityLabel);
+        sensorDataProvider.startDataCollection();
 
-          // Start mock data collection using demo service
-          final demoService = activityProvider.demoService;
-
-          demoService.startMockCollection(
-            samplingRate: 50, // Collection runs until user stops
-          );
-
-          // Listen to demo collection progress
-          _demoDataSubscription = demoService.collectionSamplesStream.listen((sampleCount) {
-            if (mounted) {
-              setState(() {
-                _demoSamplesCollected = sampleCount;
-              });
-            }
-          });
-
-          // Generate mock sensor data for charts at 20Hz (smoother UI updates)
-          _demoDataTimer = Timer.periodic(Duration(milliseconds: 50), (timer) {
-            if (mounted && _isDemoCollecting) {
-              final mockData = demoService.getMockSensorData();
+        // Poll sensor data for charts at 20Hz (smoother UI updates)
+        _chartDataTimer = Timer.periodic(Duration(milliseconds: 50), (timer) {
+          if (mounted && sensorDataProvider.isCollecting) {
+            final latestData = sensorDataProvider.latestData;
+            if (latestData != null) {
               _addSensorData(
-                mockData['accelerometer']!.cast<String, double>(),
-                mockData['gyroscope']!.cast<String, double>(),
+                {
+                  'x': latestData.accelerometer.x,
+                  'y': latestData.accelerometer.y,
+                  'z': latestData.accelerometer.z,
+                },
+                {
+                  'x': latestData.gyroscope.x,
+                  'y': latestData.gyroscope.y,
+                  'z': latestData.gyroscope.z,
+                },
               );
             }
-          });
-        } else {
-          // Real mode - connect to WebSocket
-          await _websocketService!.connect(appState.websocketUrl);
-          sensorDataProvider.setActivityLabel(_selectedActivityLabel);
-          sensorDataProvider.startDataCollection();
-
-          // Poll sensor data for charts at 20Hz (smoother UI updates)
-          _demoDataTimer = Timer.periodic(Duration(milliseconds: 50), (timer) {
-            if (mounted && sensorDataProvider.isCollecting) {
-              final latestData = sensorDataProvider.latestData;
-              if (latestData != null) {
-                _addSensorData(
-                  {
-                    'x': latestData.accelerometer.x,
-                    'y': latestData.accelerometer.y,
-                    'z': latestData.accelerometer.z,
-                  },
-                  {
-                    'x': latestData.gyroscope.x,
-                    'y': latestData.gyroscope.y,
-                    'z': latestData.gyroscope.z,
-                  },
-                );
-              }
-            }
-          });
-        }
+          }
+        });
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -191,38 +148,20 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
         }
       }
     } else {
-      // Stop collection
-      if (appState.demoModeEnabled) {
-        activityProvider.demoService.stopMockCollection();
-        _demoDataSubscription?.cancel();
-        _demoDataSubscription = null;
-        _demoDataTimer?.cancel();
-        _demoDataTimer = null;
-        setState(() {
-          _isDemoCollecting = false;
-          _demoCollectionStartTime = null;
-        });
-      } else {
-        // IMPORTANT: Stop sensor collection FIRST to prevent sending data after stop signal
-        sensorDataProvider.stopCollection();
-        _demoDataTimer?.cancel();
-        _demoDataTimer = null;
+      // IMPORTANT: Stop sensor collection FIRST to prevent sending data after stop signal
+      sensorDataProvider.stopCollection();
+      _chartDataTimer?.cancel();
+      _chartDataTimer = null;
 
-        // Send stop_collection signal to server
-        _websocketService!.sendStopCollection();
+      // Send stop_collection signal to server
+      _websocketService!.sendStopCollection();
 
-        // Wait briefly for server to process the signal
-        await Future.delayed(Duration(milliseconds: 500));
+      // Wait briefly for server to process the signal
+      await Future.delayed(Duration(milliseconds: 500));
 
-        // Disconnect from server
-        _websocketService!.disconnect();
-      }
+      // Disconnect from server
+      _websocketService!.disconnect();
     }
-  }
-
-  Duration get _demoCollectionDuration {
-    if (_demoCollectionStartTime == null) return Duration.zero;
-    return DateTime.now().difference(_demoCollectionStartTime!);
   }
 
   @override
@@ -289,7 +228,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
               padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
               child: Consumer2<SensorDataProvider, AppStateProvider>(
                 builder: (context, sensorData, appState, _) {
-                  final isCollecting = _isCollecting(sensorData, appState);
+                  final isCollecting = _isCollecting(sensorData);
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,9 +333,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              appState.demoModeEnabled
-                                  ? '${_demoCollectionDuration.inMinutes.toString().padLeft(2, '0')}:${(_demoCollectionDuration.inSeconds % 60).toString().padLeft(2, '0')}'
-                                  : '${sensorData.collectionDuration.inMinutes.toString().padLeft(2, '0')}:${(sensorData.collectionDuration.inSeconds % 60).toString().padLeft(2, '0')}',
+                              '${sensorData.collectionDuration.inMinutes.toString().padLeft(2, '0')}:${(sensorData.collectionDuration.inSeconds % 60).toString().padLeft(2, '0')}',
                               style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.w600,
@@ -689,21 +626,17 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                               children: [
                                 _buildStatRow(
                                   'Total Samples',
-                                  appState.demoModeEnabled
-                                      ? '$_demoSamplesCollected'
-                                      : '${sensorData.packetsSent}',
+                                  '${sensorData.packetsSent}',
                                 ),
                                 const SizedBox(height: 8),
                                 _buildStatRow(
                                   'Duration',
-                                  appState.demoModeEnabled
-                                      ? '${_demoCollectionDuration.inMinutes.toString().padLeft(2, '0')}:${(_demoCollectionDuration.inSeconds % 60).toString().padLeft(2, '0')}'
-                                      : '${sensorData.collectionDuration.inMinutes.toString().padLeft(2, '0')}:${(sensorData.collectionDuration.inSeconds % 60).toString().padLeft(2, '0')}',
+                                  '${sensorData.collectionDuration.inMinutes.toString().padLeft(2, '0')}:${(sensorData.collectionDuration.inSeconds % 60).toString().padLeft(2, '0')}',
                                 ),
                                 const SizedBox(height: 8),
                                 _buildStatRow('Sampling Rate', '50 Hz'),
                                 const SizedBox(height: 8),
-                                _buildStatRow('Sensors', 'Accelerometer, Gyroscope${appState.demoModeEnabled ? ' (Demo)' : ''}'),
+                                _buildStatRow('Sensors', 'Accelerometer, Gyroscope'),
                               ],
                             ),
                           ),
@@ -1022,9 +955,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
 
   @override
   void dispose() {
-    // Clean up timers and subscriptions
-    _demoDataSubscription?.cancel();
-    _demoDataTimer?.cancel();
+    // Clean up chart data timer
+    _chartDataTimer?.cancel();
     // Don't dispose the shared WebSocketService - it's managed by the provider
     super.dispose();
   }

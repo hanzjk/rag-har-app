@@ -28,38 +28,7 @@ class _MyAppState extends State<MyApp> {
   late final ActivityProvider _activityProvider = ActivityProvider(websocketService: _websocketService);
 
   @override
-  void initState() {
-    super.initState();
-
-    // Listen for settings changes and start demo mode when ready
-    _appStateProvider.addListener(_checkAndStartDemoMode);
-
-    // Also check immediately after first frame in case settings are already loaded
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkAndStartDemoMode();
-    });
-  }
-
-  void _checkAndStartDemoMode() {
-    // Only manage demo mode here - don't interfere with real mode
-    if (_appStateProvider.demoModeEnabled &&
-        _appStateProvider.activityRecognitionEnabled &&
-        !_activityProvider.isListening) {
-      print('🎮 main.dart: Starting demo mode predictions');
-      _activityProvider.startListening(demoMode: true);
-    } else if (_appStateProvider.demoModeEnabled &&
-        !_appStateProvider.activityRecognitionEnabled &&
-        _activityProvider.isListening) {
-      // Stop demo mode if activity recognition is disabled
-      print('🛑 main.dart: Stopping demo mode predictions');
-      _activityProvider.stopListening();
-    }
-    // Note: Real mode (non-demo) is managed by HomeTabScreen, not here
-  }
-
-  @override
   void dispose() {
-    _appStateProvider.removeListener(_checkAndStartDemoMode);
     _activityProvider.dispose();
     _websocketService.dispose();
     _appStateProvider.dispose();

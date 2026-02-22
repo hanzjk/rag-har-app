@@ -26,6 +26,11 @@ class ConnectionStatusBanner extends StatelessWidget {
         icon = Icons.sync;
         text = 'Connecting...';
         break;
+      case ws.ConnectionState.reconnecting:
+        backgroundColor = Colors.orange;
+        icon = Icons.sync;
+        text = 'Reconnecting...';
+        break;
       case ws.ConnectionState.disconnected:
         backgroundColor = Colors.grey;
         icon = Icons.cloud_off;

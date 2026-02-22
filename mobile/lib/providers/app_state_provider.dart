@@ -8,13 +8,11 @@ class AppStateProvider extends ChangeNotifier {
   ws.ConnectionState _connectionState = ws.ConnectionState.disconnected;
   bool _activityRecognitionEnabled = false; // Disabled by default
   bool _motionCaptureEnabled = false;
-  bool _demoModeEnabled = false;
 
   String get websocketUrl => _websocketUrl;
   ws.ConnectionState get connectionState => _connectionState;
   bool get activityRecognitionEnabled => _activityRecognitionEnabled;
   bool get motionCaptureEnabled => _motionCaptureEnabled;
-  bool get demoModeEnabled => _demoModeEnabled;
 
   AppStateProvider() {
     _loadSettings();
@@ -24,7 +22,6 @@ class AppStateProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _websocketUrl =
         prefs.getString(AppConstants.webSocketUrlKey) ?? AppConstants.defaultWebSocketUrl;
-    _demoModeEnabled = prefs.getBool('demo_mode_enabled') ?? false;
     _activityRecognitionEnabled = prefs.getBool('activity_recognition_enabled') ?? false;
     notifyListeners();
   }
@@ -50,13 +47,6 @@ class AppStateProvider extends ChangeNotifier {
 
   void setMotionCaptureEnabled(bool enabled) {
     _motionCaptureEnabled = enabled;
-    notifyListeners();
-  }
-
-  Future<void> setDemoModeEnabled(bool enabled) async {
-    _demoModeEnabled = enabled;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('demo_mode_enabled', enabled);
     notifyListeners();
   }
 }

@@ -200,8 +200,6 @@ class _HomeTabScreenState extends State<HomeTabScreen>
     _stopChartDataPolling();
 
     final sensorDataProvider = context.read<SensorDataProvider>();
-    final appState = context.read<AppStateProvider>();
-    final activityProvider = context.read<ActivityProvider>();
 
     print('📊 Chart polling started');
 
@@ -245,16 +243,9 @@ class _HomeTabScreenState extends State<HomeTabScreen>
         print('📊 Poll #$_pollCount: state=$currentState, hasData=${latestData != null}, chartPoints=${_accelX.length}');
       }
 
-      if (appState.demoModeEnabled) {
-        // Demo mode - get mock data
-        final mockData = activityProvider.demoService.getMockSensorData();
-        _addSensorData(
-          mockData['accelerometer']!.cast<String, double>(),
-          mockData['gyroscope']!.cast<String, double>(),
-        );
-      } else if (currentState == RecognitionState.collecting ||
-                 currentState == RecognitionState.waitingForPrediction ||
-                 currentState == RecognitionState.predictionReceived) {
+      if (currentState == RecognitionState.collecting ||
+          currentState == RecognitionState.waitingForPrediction ||
+          currentState == RecognitionState.predictionReceived) {
         // Real mode - get actual sensor data only when collecting or showing prediction
         // (not during countdown or idle when sensor isn't streaming)
         if (latestData != null) {
@@ -343,23 +334,17 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       });
 
       try {
-        // Check if in demo mode
-        if (appState.demoModeEnabled) {
-          print('🎮 HomeTabScreen: Starting in DEMO mode');
-          activityProvider.startListening(demoMode: true);
-        } else {
-          print('🌐 HomeTabScreen: Starting in REAL mode');
-          final websocketService = activityProvider.websocketService;
-          print('🌐 HomeTabScreen: Connecting to ${appState.websocketUrl}');
-          await websocketService.connect(appState.websocketUrl);
-          print(
-            '🌐 HomeTabScreen: Connected! Starting ActivityProvider listener...',
-          );
-          activityProvider.startListening();
-          print('🌐 HomeTabScreen: Starting SensorDataProvider recognition...');
-          sensorDataProvider.startActivityRecognition();
-          print('✅ HomeTabScreen: All started successfully');
-        }
+        print('🌐 HomeTabScreen: Starting recognition');
+        final websocketService = activityProvider.websocketService;
+        print('🌐 HomeTabScreen: Connecting to ${appState.websocketUrl}');
+        await websocketService.connect(appState.websocketUrl);
+        print(
+          '🌐 HomeTabScreen: Connected! Starting ActivityProvider listener...',
+        );
+        activityProvider.startListening();
+        print('🌐 HomeTabScreen: Starting SensorDataProvider recognition...');
+        sensorDataProvider.startActivityRecognition();
+        print('✅ HomeTabScreen: All started successfully');
 
         await appState.setActivityRecognitionEnabled(true);
         _isConnecting = false; // Reset flag on success
@@ -683,8 +668,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                         !activityProvider.activityHistory.first.fastInference) ...[
                                       const SizedBox(height: 4),
                                       Text(
-                                        appState.demoModeEnabled ||
-                                                activityProvider.activityHistory.isEmpty
+                                        activityProvider.activityHistory.isEmpty
                                             ? _getActivityDescription(currentActivity)
                                             : (activityProvider.activityHistory.first.reasoning ??
                                                 _getActivityDescription(currentActivity)),
@@ -1042,8 +1026,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
 
                   // Show charts section when recognition is active (any state except idle)
                   if (isEnabled &&
-                      (recognitionState != RecognitionState.idle ||
-                       appState.demoModeEnabled)) {
+                      recognitionState != RecognitionState.idle) {
                     return Column(
                       children: [
                         const SizedBox(height: 16),

@@ -39,9 +39,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final sensorDataProvider = context.read<SensorDataProvider>();
     final datastoreProvider = context.read<DataStoreProvider>();
 
-    // Skip if in demo mode
-    if (appState.demoModeEnabled) return;
-
     // Connect to WebSocket if not connected
     if (sensorDataProvider.websocketService.connectionState != ws.ConnectionState.connected) {
       try {
@@ -84,20 +81,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       try {
-        // Check if in demo mode
-        if (appState.demoModeEnabled) {
-          // Start demo mode - no WebSocket connection needed
-          activityProvider.startListening(demoMode: true);
-        } else {
-          // Connect to WebSocket
-          await sensorDataProvider.websocketService.connect(appState.websocketUrl);
+        // Connect to WebSocket
+        await sensorDataProvider.websocketService.connect(appState.websocketUrl);
 
-          // Start listening for predictions
-          activityProvider.startListening();
+        // Start listening for predictions
+        activityProvider.startListening();
 
-          // Start activity recognition mode
-          sensorDataProvider.startActivityRecognition();
-        }
+        // Start activity recognition mode
+        sensorDataProvider.startActivityRecognition();
 
         // Update global state
         await appState.setActivityRecognitionEnabled(true);
@@ -146,15 +137,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       try {
-        // Check if in demo mode
-        if (appState.demoModeEnabled) {
-          // Enable demo mode - no WebSocket connection needed
-          // Motion capture will use mock data in the data collection screen
-        } else {
-          // Connect to WebSocket if not already connected
-          if (sensorDataProvider.websocketService.connectionState != ws.ConnectionState.connected) {
-            await sensorDataProvider.websocketService.connect(appState.websocketUrl);
-          }
+        // Connect to WebSocket if not already connected
+        if (sensorDataProvider.websocketService.connectionState != ws.ConnectionState.connected) {
+          await sensorDataProvider.websocketService.connect(appState.websocketUrl);
         }
 
         // Update global state
