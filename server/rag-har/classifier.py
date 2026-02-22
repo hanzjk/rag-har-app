@@ -184,7 +184,7 @@ class RAGActivityClassifier:
         """
         # Generate collection name from user-provided name
         # Sanitize name: lowercase, replace spaces with underscores, remove special chars
-        sanitized_name = re.sub(r'[^a-z0-9_]', '', name.lower().replace(' ', '_'))
+        sanitized_name = re.sub(r"[^a-z0-9_]", "", name.lower().replace(" ", "_"))
         collection_name = f"{self.USER_DATASTORE_PREFIX}{sanitized_name}"
 
         # Check if collection already exists
@@ -362,7 +362,9 @@ class RAGActivityClassifier:
 
             for coll_name in collections:
                 # Check if it's a HAR-related collection
-                if coll_name == self.DEFAULT_COLLECTION_NAME or coll_name.startswith(self.USER_DATASTORE_PREFIX):
+                if coll_name == self.DEFAULT_COLLECTION_NAME or coll_name.startswith(
+                    self.USER_DATASTORE_PREFIX
+                ):
                     try:
                         # Get collection stats
                         stats = self.milvus_client.get_collection_stats(coll_name)
@@ -376,16 +378,22 @@ class RAGActivityClassifier:
                         is_default = True
                     else:
                         # Remove prefix to get user name
-                        display_name = coll_name[len(self.USER_DATASTORE_PREFIX):].replace('_', ' ').title()
+                        display_name = (
+                            coll_name[len(self.USER_DATASTORE_PREFIX) :]
+                            .replace("_", " ")
+                            .title()
+                        )
                         is_default = False
 
-                    datastores.append({
-                        "name": display_name,
-                        "collection_name": coll_name,
-                        "sample_count": sample_count,
-                        "is_default": is_default,
-                        "is_active": coll_name == self.collection_name,
-                    })
+                    datastores.append(
+                        {
+                            "name": display_name,
+                            "collection_name": coll_name,
+                            "sample_count": sample_count,
+                            "is_default": is_default,
+                            "is_active": coll_name == self.collection_name,
+                        }
+                    )
 
             # Sort: default first, then by name
             datastores.sort(key=lambda x: (not x["is_default"], x["name"]))
@@ -422,7 +430,11 @@ class RAGActivityClassifier:
         if is_default:
             display_name = "Default (shared)"
         else:
-            display_name = self.collection_name[len(self.USER_DATASTORE_PREFIX):].replace('_', ' ').title()
+            display_name = (
+                self.collection_name[len(self.USER_DATASTORE_PREFIX) :]
+                .replace("_", " ")
+                .title()
+            )
 
         return {
             "name": display_name,
@@ -495,7 +507,9 @@ class RAGActivityClassifier:
 
         return "\n".join(description_parts)
 
-    def classify_dataframe(self, df: pd.DataFrame, fast_inference: bool = False) -> Dict:
+    def classify_dataframe(
+        self, df: pd.DataFrame, fast_inference: bool = False
+    ) -> Dict:
         """
         Classify a DataFrame containing sensor data directly.
 
@@ -506,7 +520,9 @@ class RAGActivityClassifier:
         Returns:
             Dict with prediction and metadata
         """
-        logger.info(f"Starting classification for {len(df)} sensor samples (fast_inference={fast_inference})")
+        logger.info(
+            f"Starting classification for {len(df)} sensor samples (fast_inference={fast_inference})"
+        )
 
         # Generate feature description from the raw dataframe
         logger.info("Generating feature description from raw sensor data")
@@ -556,9 +572,10 @@ class RAGActivityClassifier:
 
         # Hybrid search with weighted ranker
         logger.info(
-            f"Performing hybrid search in Milvus: {self.fewshot} samples per segment → "
-            f"{self.out_fewshot} final samples (weighted ranker: 0.25/0.25/0.25/0.25)"
+            f"🔍 RETRIEVAL: Using collection '{self.collection_name}' | "
+            f"{self.fewshot} samples per segment → {self.out_fewshot} final samples"
         )
+        print(f"🔍 Retrieving from collection: {self.collection_name}")
         docs = self.milvus_client.hybrid_search(
             collection_name=self.collection_name,
             output_fields=[
@@ -634,7 +651,9 @@ class RAGActivityClassifier:
         if fast_inference:
             # FAST INFERENCE: Use gpt-5-mini without structured output for speed
             fast_model = "gpt-5-mini"
-            system_prompt = f"Classify the activity. Reply with ONLY one word from: {classes_str}"
+            system_prompt = (
+                f"Classify the activity. Reply with ONLY one word from: {classes_str}"
+            )
 
             logger.info(f"FAST INFERENCE: Using {fast_model} without structured output")
 
@@ -646,14 +665,16 @@ class RAGActivityClassifier:
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt},
                         ],
-                        max_tokens=10,
                     )
                     prediction = response.choices[0].message.content.strip().lower()
                     # Validate prediction is in valid labels
                     if prediction not in [label.lower() for label in self.valid_labels]:
                         # Try to find closest match
                         for label in self.valid_labels:
-                            if label.lower() in prediction or prediction in label.lower():
+                            if (
+                                label.lower() in prediction
+                                or prediction in label.lower()
+                            ):
                                 prediction = label
                                 break
                     reasoning = None
@@ -661,12 +682,16 @@ class RAGActivityClassifier:
                     logger.info(f"FAST LLM response received: {prediction}")
                 except openai.RateLimitError:
                     retry_count += 1
-                    logger.warning(f"Rate limit reached (retry {retry_count}). Waiting 65 seconds...")
+                    logger.warning(
+                        f"Rate limit reached (retry {retry_count}). Waiting 65 seconds..."
+                    )
                     print("Rate limit reached. Waiting 65 seconds...")
                     time.sleep(65)
                 except Exception as e:
                     retry_count += 1
-                    logger.warning(f"OpenAI API error (retry {retry_count}): {e}. Waiting 10 seconds...")
+                    logger.warning(
+                        f"OpenAI API error (retry {retry_count}): {e}. Waiting 10 seconds..."
+                    )
                     print(f"OpenAI API error: {e}. Waiting 10 seconds...")
                     time.sleep(10)
         else:
@@ -679,7 +704,9 @@ Explanation rules:
 - Do NOT copy phrases from the input; translate them into everyday language.
 - Keep it suitable for a mobile UI.
 """
-            logger.info(f"STANDARD INFERENCE: Using {self.model} with structured output")
+            logger.info(
+                f"STANDARD INFERENCE: Using {self.model} with structured output"
+            )
 
             while not success:
                 try:
@@ -694,15 +721,21 @@ Explanation rules:
                     prediction = response.choices[0].message.parsed.activity_label
                     reasoning = response.choices[0].message.parsed.reasoning
                     success = True
-                    logger.info(f"LLM response received: {prediction} with reasoning: {reasoning}")
+                    logger.info(
+                        f"LLM response received: {prediction} with reasoning: {reasoning}"
+                    )
                 except openai.RateLimitError:
                     retry_count += 1
-                    logger.warning(f"Rate limit reached (retry {retry_count}). Waiting 65 seconds...")
+                    logger.warning(
+                        f"Rate limit reached (retry {retry_count}). Waiting 65 seconds..."
+                    )
                     print("Rate limit reached. Waiting 65 seconds...")
                     time.sleep(65)
                 except Exception as e:
                     retry_count += 1
-                    logger.warning(f"OpenAI API error (retry {retry_count}): {e}. Waiting 10 seconds...")
+                    logger.warning(
+                        f"OpenAI API error (retry {retry_count}): {e}. Waiting 10 seconds..."
+                    )
                     print(f"OpenAI API error: {e}. Waiting 10 seconds...")
                     time.sleep(10)
 
@@ -728,7 +761,9 @@ Explanation rules:
         )
         return result
 
-    def predict_from_window(self, window_data: list, fast_inference: bool = False) -> Dict[str, Any]:
+    def predict_from_window(
+        self, window_data: list, fast_inference: bool = False
+    ) -> Dict[str, Any]:
         """
         Simplified prediction method for real-time use in activity_predictor.
 
@@ -741,7 +776,9 @@ Explanation rules:
             Dict with 'activity' (predicted label) and 'confidence' (float)
         """
         try:
-            logger.info(f"predict_from_window called with {len(window_data)} samples (fast_inference={fast_inference})")
+            logger.info(
+                f"predict_from_window called with {len(window_data)} samples (fast_inference={fast_inference})"
+            )
 
             # Convert window data to DataFrame
             df = pd.DataFrame(window_data)

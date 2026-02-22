@@ -104,6 +104,24 @@ class WebSocketService {
   ConnectionState get connectionState => _connectionState;
 
   Future<void> connect(String url) async {
+    // Skip if already connected
+    if (_connectionState == ConnectionState.connected && _channel != null) {
+      print('WebSocketService: Already connected, skipping');
+      return;
+    }
+
+    // Skip if already connecting
+    if (_connectionState == ConnectionState.connecting) {
+      print('WebSocketService: Already connecting, skipping');
+      return;
+    }
+
+    // Clear any existing failed channel (don't await close - it may hang)
+    if (_channel != null) {
+      print('WebSocketService: Clearing previous channel');
+      _channel = null;
+    }
+
     try {
       print('WebSocketService: Attempting to connect to $url');
       _updateConnectionState(ConnectionState.connecting);

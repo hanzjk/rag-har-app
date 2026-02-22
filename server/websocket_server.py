@@ -141,17 +141,23 @@ async def handle_client(websocket):
                     await websocket.send(json.dumps(response))
 
                     # Run RAG-HAR pipeline in background
-                    logger.info(f"Starting RAG-HAR pipeline for {subject_folder_name}")
+                    # Use the currently selected collection from the classifier
+                    current_collection = None
+                    if global_classifier:
+                        current_datastore = global_classifier.get_current_datastore()
+                        current_collection = current_datastore.get("collection_name")
+                    logger.info(f"Starting RAG-HAR pipeline for {subject_folder_name} (collection: {current_collection or 'default'})")
                     try:
-                        pipeline_thread = run_pipeline_async()
+                        pipeline_thread = run_pipeline_async(collection_name=current_collection)
                         logger.info(f"RAG-HAR pipeline started in background")
 
                         # Send pipeline started notification
                         pipeline_response = {
                             "type": "pipeline_started",
                             "subject_folder": subject_folder_name,
+                            "collection_name": current_collection,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "message": "RAG-HAR pipeline is processing your data in the background",
+                            "message": f"RAG-HAR pipeline is processing your data in the background (collection: {current_collection or 'default'})",
                         }
                         await websocket.send(json.dumps(pipeline_response))
                     except Exception as e:

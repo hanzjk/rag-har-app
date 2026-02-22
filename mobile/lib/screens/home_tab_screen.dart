@@ -51,6 +51,10 @@ class _HomeTabScreenState extends State<HomeTabScreen>
   Timer? _nextPredictionTimer;
   int _nextPredictionCountdown = 0;
 
+  // Processing time tracker
+  Timer? _processingTimer;
+  int _processingSeconds = 0;
+
   @override
   void initState() {
     super.initState();
@@ -81,6 +85,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
     _cardFlashController.dispose();
     _stopChartDataPolling();
     _stopNextPredictionCountdown();
+    _stopProcessingTimer();
     super.dispose();
   }
 
@@ -106,6 +111,26 @@ class _HomeTabScreenState extends State<HomeTabScreen>
     _nextPredictionTimer?.cancel();
     _nextPredictionTimer = null;
     _nextPredictionCountdown = 0;
+  }
+
+  void _startProcessingTimer() {
+    _stopProcessingTimer();
+    _processingSeconds = 0;
+    _processingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _processingSeconds++;
+      });
+    });
+  }
+
+  void _stopProcessingTimer() {
+    _processingTimer?.cancel();
+    _processingTimer = null;
+    _processingSeconds = 0;
   }
 
   void _addSensorData(Map<String, double> accel, Map<String, double> gyro) {
@@ -182,7 +207,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       final currentState = sensorDataProvider.recognitionState;
       final latestData = sensorDataProvider.latestData;
 
-      // Detect state transitions for collection markers
+      // Detect state transitions for collection markers and processing timer
       if (_previousRecognitionState != currentState) {
         // Started collecting - add start marker
         if (currentState == RecognitionState.collecting) {
@@ -196,6 +221,15 @@ class _HomeTabScreenState extends State<HomeTabScreen>
           setState(() {
             _collectionEndMarkers.add(_totalDataPointsAdded);
           });
+        }
+        // Started waiting for prediction - start processing timer
+        if (currentState == RecognitionState.waitingForPrediction) {
+          _startProcessingTimer();
+        }
+        // Stopped waiting for prediction - stop processing timer
+        if (_previousRecognitionState == RecognitionState.waitingForPrediction &&
+            currentState != RecognitionState.waitingForPrediction) {
+          _stopProcessingTimer();
         }
         _previousRecognitionState = currentState;
       }
@@ -243,11 +277,19 @@ class _HomeTabScreenState extends State<HomeTabScreen>
     _chartDataTimer = null;
   }
 
+  bool _isConnecting = false; // Prevent multiple connection attempts
+
   Future<void> _toggleRecognition() async {
     print('🔘 HomeTabScreen: _toggleRecognition called');
     final sensorDataProvider = context.read<SensorDataProvider>();
     final activityProvider = context.read<ActivityProvider>();
     final appState = context.read<AppStateProvider>();
+
+    // Prevent multiple simultaneous connection attempts
+    if (_isConnecting) {
+      print('⏳ HomeTabScreen: Already connecting, ignoring tap');
+      return;
+    }
 
     // Check if session is active (any state except idle)
     final isSessionActive =
@@ -259,6 +301,8 @@ class _HomeTabScreenState extends State<HomeTabScreen>
     if (!isSessionActive) {
       // Start new session
       print('▶️ HomeTabScreen: Starting new recognition session');
+      _isConnecting = true; // Set flag to prevent multiple taps
+
       final hasPermission = await _permissionService.requestSensorPermissions();
       if (!hasPermission) {
         print('❌ HomeTabScreen: No sensor permissions');
@@ -307,7 +351,9 @@ class _HomeTabScreenState extends State<HomeTabScreen>
         }
 
         await appState.setActivityRecognitionEnabled(true);
+        _isConnecting = false; // Reset flag on success
       } catch (e) {
+        _isConnecting = false; // Reset flag on error
         print('❌ HomeTabScreen: Error starting recognition: $e');
         // Keep chart polling running - user can retry connection
         if (mounted) {
@@ -498,37 +544,21 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Show header when enabled and not in loading state
+                                // Show "Activity Detected" header only when we have a prediction to show
+                                // (not during collecting or waiting states)
                                 if (isEnabled &&
-                                    !isWaitingForFirstPrediction) ...[
-                                  // Animate the "Activity Detected" header for each prediction
+                                    !isWaitingForFirstPrediction &&
+                                    recognitionState != RecognitionState.collecting &&
+                                    recognitionState != RecognitionState.waitingForPrediction) ...[
                                   ScaleTransition(
                                     scale: _scaleAnimation,
                                     child: Row(
                                       children: [
-                                        // Show loader when collecting/waiting, sensor icon when prediction received
-                                        if (recognitionState ==
-                                                RecognitionState.collecting ||
-                                            recognitionState ==
-                                                RecognitionState
-                                                    .waitingForPrediction)
-                                          SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(
-                                                    Colors.white,
-                                                  ),
-                                            ),
-                                          )
-                                        else
-                                          Icon(
-                                            Icons.sensors,
-                                            color: Colors.white,
-                                            size: 20,
-                                          ),
+                                        Icon(
+                                          Icons.sensors,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
                                         const SizedBox(width: 12),
                                         Text(
                                           'Activity Detected',
@@ -545,7 +575,27 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                 ],
                                 if (isEnabled) ...[
                                   // Show state-specific UI
-                                  if (recognitionState == RecognitionState.collecting) ...[
+                                  if (recognitionState == RecognitionState.countdown) ...[
+                                    // Countdown before collection starts
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.hourglass_top_rounded,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Text(
+                                          'Starting in ${sensorDataProvider.countdown}...',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ] else if (recognitionState == RecognitionState.collecting) ...[
                                     // Collecting data with progress bar
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -584,8 +634,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                         ),
                                       ],
                                     ),
-                                  ] else if (recognitionState == RecognitionState.waitingForPrediction ||
-                                             isWaitingForFirstPrediction) ...[
+                                  ] else if (recognitionState == RecognitionState.waitingForPrediction) ...[
                                     // Processing prediction with spinner
                                     Row(
                                       children: [
@@ -936,6 +985,39 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                             ],
                           ),
                         ),
+                      // Processing timer in bottom right corner
+                      if (isEnabled &&
+                          recognitionState == RecognitionState.waitingForPrediction)
+                        Positioned(
+                          bottom: 12,
+                          right: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.timer_outlined,
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                  size: 12,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${_processingSeconds}s',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   );
                 },
@@ -1252,7 +1334,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
         annotations.add(VerticalRangeAnnotation(
           x1: startIndex,
           x2: _accelX.length.toDouble(),
-          color: Color(0xFF10B981).withValues(alpha: 0.15),
+          color: Color(0xFF8B5CF6).withValues(alpha: 0.1),
         ));
       }
     }

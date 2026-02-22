@@ -395,7 +395,7 @@ class ProgressScreen extends StatelessWidget {
     // Get predictions with sensor data (reversed to show oldest first)
     final predictionsWithData = history
         .where((p) => p.sensorData != null && p.sensorData!.isNotEmpty)
-        .take(10)
+        .take(20)
         .toList()
         .reversed
         .toList();
@@ -544,65 +544,77 @@ class ProgressScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           SizedBox(
-            height: 120,
-            child: LineChart(
-              LineChartData(
-                minY: minY,
-                maxY: maxY,
-                minX: 0,
-                maxX: xData.length.toDouble() - 1,
-                gridData: FlGridData(show: true, drawVerticalLine: false),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: true, reservedSize: 35),
-                  ),
-                  bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                borderData: FlBorderData(show: false),
-                extraLinesData: ExtraLinesData(
-                  verticalLines: markers.map((marker) => VerticalLine(
-                    x: marker.index.toDouble(),
-                    color: marker.activity.color.withValues(alpha: 0.8),
-                    strokeWidth: 2,
-                    dashArray: [4, 4],
-                    label: VerticalLineLabel(
-                      show: true,
-                      alignment: Alignment.topCenter,
-                      padding: const EdgeInsets.only(bottom: 2),
-                      style: TextStyle(
-                        color: marker.activity.color,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
+            height: 150,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                // ~0.5px per data point, so 3 predictions (~300 samples) fit in ~150px visible area
+                width: (xData.length * 0.5).clamp(300.0, double.infinity),
+                child: LineChart(
+                  LineChartData(
+                    // Add buffer to prevent top/bottom label clipping
+                    minY: minY - 3,
+                    maxY: maxY + 3,
+                    minX: 0,
+                    maxX: xData.length.toDouble() - 1,
+                    gridData: FlGridData(show: true, drawVerticalLine: false),
+                    titlesData: FlTitlesData(
+                      leftTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 40,
+                          interval: 10,
+                        ),
                       ),
-                      labelResolver: (_) => marker.activity.shortName,
+                      bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
                     ),
-                  )).toList(),
+                    borderData: FlBorderData(show: false),
+                    extraLinesData: ExtraLinesData(
+                      verticalLines: markers.map((marker) => VerticalLine(
+                        x: marker.index.toDouble(),
+                        color: marker.activity.color.withValues(alpha: 0.8),
+                        strokeWidth: 2,
+                        dashArray: [4, 4],
+                        label: VerticalLineLabel(
+                          show: true,
+                          alignment: Alignment.topCenter,
+                          padding: const EdgeInsets.only(bottom: 2),
+                          style: TextStyle(
+                            color: marker.activity.color,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          labelResolver: (_) => marker.activity.shortName,
+                        ),
+                      )).toList(),
+                    ),
+                    lineBarsData: [
+                      LineChartBarData(
+                        spots: xSpots,
+                        isCurved: false,
+                        color: Color(0xFF8B5CF6),
+                        barWidth: 1.5,
+                        dotData: FlDotData(show: false),
+                      ),
+                      LineChartBarData(
+                        spots: ySpots,
+                        isCurved: false,
+                        color: Color(0xFF10B981),
+                        barWidth: 1.5,
+                        dotData: FlDotData(show: false),
+                      ),
+                      LineChartBarData(
+                        spots: zSpots,
+                        isCurved: false,
+                        color: Color(0xFF3B82F6),
+                        barWidth: 1.5,
+                        dotData: FlDotData(show: false),
+                      ),
+                    ],
+                  ),
                 ),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: xSpots,
-                    isCurved: false,
-                    color: Color(0xFF8B5CF6),
-                    barWidth: 1.5,
-                    dotData: FlDotData(show: false),
-                  ),
-                  LineChartBarData(
-                    spots: ySpots,
-                    isCurved: false,
-                    color: Color(0xFF10B981),
-                    barWidth: 1.5,
-                    dotData: FlDotData(show: false),
-                  ),
-                  LineChartBarData(
-                    spots: zSpots,
-                    isCurved: false,
-                    color: Color(0xFF3B82F6),
-                    barWidth: 1.5,
-                    dotData: FlDotData(show: false),
-                  ),
-                ],
               ),
             ),
           ),
@@ -671,70 +683,78 @@ class ProgressScreen extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 100,
-          child: LineChart(
-            LineChartData(
-              minY: 0,
-              maxY: ActivityType.values.length.toDouble() - 1,
-              gridData: FlGridData(
-                show: true,
-                drawVerticalLine: false,
-                horizontalInterval: 1,
-              ),
-              titlesData: FlTitlesData(
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 45,
-                    getTitlesWidget: (value, meta) {
-                      final index = value.toInt();
-                      if (index < 0 || index >= ActivityType.values.length) {
-                        return const SizedBox.shrink();
-                      }
-                      final activity = ActivityType.values[index];
-                      if (activity == ActivityType.unknown) {
-                        return const SizedBox.shrink();
-                      }
-                      return Text(
-                        activity.shortName,
-                        style: TextStyle(fontSize: 9, color: activity.color),
-                      );
-                    },
-                  ),
-                ),
-                bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              ),
-              borderData: FlBorderData(show: false),
-              lineBarsData: [
-                LineChartBarData(
-                  spots: timelineData.asMap().entries.map((entry) {
-                    return FlSpot(
-                      entry.key.toDouble(),
-                      entry.value.activity.index.toDouble(),
-                    );
-                  }).toList(),
-                  isCurved: false,
-                  isStepLineChart: true,
-                  color: Color(0xFF3B82F6),
-                  barWidth: 2,
-                  dotData: FlDotData(
+          height: 130,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              // ~100px per activity, so 3 activities fit in ~300px visible area
+              width: (timelineData.length * 100.0).clamp(300.0, double.infinity),
+              child: LineChart(
+                LineChartData(
+                  // Add buffer to prevent top/bottom label clipping
+                  minY: -0.5,
+                  maxY: ActivityType.values.length.toDouble() - 0.5,
+                  gridData: FlGridData(
                     show: true,
-                    getDotPainter: (spot, percent, bar, index) {
-                      final activity = ActivityType.values[spot.y.toInt()];
-                      return FlDotCirclePainter(
-                        radius: 4,
-                        color: activity.color,
-                        strokeWidth: 1.5,
-                        strokeColor: Colors.white,
-                      );
-                    },
+                    drawVerticalLine: false,
+                    horizontalInterval: 1,
                   ),
-                ),
-              ],
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 45,
+                        getTitlesWidget: (value, meta) {
+                          final index = value.toInt();
+                          if (index < 0 || index >= ActivityType.values.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final activity = ActivityType.values[index];
+                          if (activity == ActivityType.unknown) {
+                            return const SizedBox.shrink();
+                          }
+                          return Text(
+                            activity.shortName,
+                            style: TextStyle(fontSize: 9, color: activity.color),
+                          );
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: timelineData.asMap().entries.map((entry) {
+                        return FlSpot(
+                          entry.key.toDouble(),
+                          entry.value.activity.index.toDouble(),
+                        );
+                      }).toList(),
+                      isCurved: false,
+                      isStepLineChart: true,
+                      color: Color(0xFF3B82F6),
+                      barWidth: 2,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, index) {
+                          final activity = ActivityType.values[spot.y.toInt()];
+                          return FlDotCirclePainter(
+                            radius: 4,
+                            color: activity.color,
+                            strokeWidth: 1.5,
+                            strokeColor: Colors.white,
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
+        ),
         ),
       ],
     );

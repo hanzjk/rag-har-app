@@ -135,17 +135,22 @@ def init_embeddings():
     )
 
 
-def create_collection(milvus_client: MilvusClient) -> bool:
+def create_collection(milvus_client: MilvusClient, collection_name: str = None) -> bool:
     """
     Create Milvus collection if it doesn't exist.
+
+    Args:
+        milvus_client: Milvus client instance
+        collection_name: Optional collection name (defaults to COLLECTION_NAME)
 
     Returns:
         True if collection was created, False if it already existed
     """
+    target_collection = collection_name if collection_name else COLLECTION_NAME
     collections = milvus_client.list_collections()
 
-    if COLLECTION_NAME in collections:
-        logger.info(f"Collection {COLLECTION_NAME} already exists")
+    if target_collection in collections:
+        logger.info(f"Collection {target_collection} already exists")
         return False
 
     schema = MilvusClient.create_schema(
@@ -227,12 +232,12 @@ def create_collection(milvus_client: MilvusClient) -> bool:
     )
 
     milvus_client.create_collection(
-        collection_name=COLLECTION_NAME,
+        collection_name=target_collection,
         metric_type="COSINE",
         schema=schema,
         index_params=index_params,
     )
-    logger.info(f"Created collection: {COLLECTION_NAME}")
+    logger.info(f"Created collection: {target_collection}")
     return True
 
 
@@ -483,11 +488,22 @@ def prepare_data_for_milvus(data_list: List[Dict]) -> List[Dict]:
     return milvus_data
 
 
-def insert_data_to_milvus(milvus_client: MilvusClient, rows: List[Dict]):
-    """Insert data into Milvus collection with batching for large payloads."""
+def insert_data_to_milvus(milvus_client: MilvusClient, rows: List[Dict], collection_name: str = None):
+    """Insert data into Milvus collection with batching for large payloads.
+
+    Args:
+        milvus_client: Milvus client instance
+        rows: Data rows to insert
+        collection_name: Optional collection name (defaults to COLLECTION_NAME)
+    """
+    target_collection = collection_name if collection_name else COLLECTION_NAME
+
     if not rows:
         logger.warning("No data to insert into Milvus")
         return
+
+    logger.info(f"💾 SAVING: Indexing {len(rows)} samples to collection '{target_collection}'")
+    print(f"💾 Saving to collection: {target_collection}")
 
     total, batch, batch_bytes = 0, [], 0
     try:
@@ -497,7 +513,7 @@ def insert_data_to_milvus(milvus_client: MilvusClient, rows: List[Dict]):
             # flush if this row would push us over the target or max rows
             if batch and (batch_bytes + sz > GRPC_TARGET or len(batch) >= MAX_ROWS):
                 milvus_client.insert(
-                    collection_name=COLLECTION_NAME, data=batch
+                    collection_name=target_collection, data=batch
                 )
                 total += len(batch)
                 logger.info(f"Inserted {len(batch)} docs (Total: {total})")
@@ -506,7 +522,7 @@ def insert_data_to_milvus(milvus_client: MilvusClient, rows: List[Dict]):
             # if one row itself is big, send it alone
             if sz > GRPC_TARGET and not batch:
                 milvus_client.insert(
-                    collection_name=COLLECTION_NAME, data=[r]
+                    collection_name=target_collection, data=[r]
                 )
                 total += 1
                 logger.info(f"Inserted 1 large doc (Total: {total})")
@@ -516,30 +532,41 @@ def insert_data_to_milvus(milvus_client: MilvusClient, rows: List[Dict]):
 
         if batch:
             milvus_client.insert(
-                collection_name=COLLECTION_NAME, data=batch
+                collection_name=target_collection, data=batch
             )
             total += len(batch)
             logger.info(f"Inserted {len(batch)} docs (Total: {total})")
 
+        # Flush to ensure data is persisted and stats are updated
+        try:
+            # MilvusClient.flush() takes collection_name as string
+            milvus_client.flush(collection_name=target_collection)
+            logger.info(f"Flushed collection: {target_collection}")
+        except Exception as flush_err:
+            logger.warning(f"Flush warning: {flush_err}")
+
         logger.info(
-            f"Successfully inserted {total} documents into collection: {COLLECTION_NAME}"
+            f"Successfully inserted {total} documents into collection: {target_collection}"
         )
     except Exception as e:
         logger.error(f"Error inserting documents into Milvus: {e}")
         raise
 
 
-def index_data(force_recreate: bool = False) -> int:
+def index_data(force_recreate: bool = False, collection_name: str = None) -> int:
     """
     Main function to index time series data to Milvus.
     Only indexes NEW sessions that haven't been indexed yet.
 
     Args:
         force_recreate: If True, drop and recreate the collection (clears tracking file)
+        collection_name: Optional collection name to use (defaults to COLLECTION_NAME)
 
     Returns:
         Number of documents indexed
     """
+    # Use provided collection name or default
+    target_collection = collection_name if collection_name else COLLECTION_NAME
     # Auto-generate descriptions directory path
     base_path = Path(__file__).parent.parent
     descriptions_dir = base_path / "output" / DATASET_NAME / "features" / "train" / "descriptions"
@@ -548,6 +575,7 @@ def index_data(force_recreate: bool = False) -> int:
     logger.info("TIME SERIES INDEXING")
     logger.info("=" * 80)
     logger.info(f"Dataset: {DATASET_NAME}")
+    logger.info(f"Collection: {target_collection}")
     logger.info(f"Descriptions directory: {descriptions_dir}")
     logger.info(f"Force recreate: {force_recreate}")
     logger.info("=" * 80)
@@ -558,16 +586,16 @@ def index_data(force_recreate: bool = False) -> int:
     embed_model = init_embeddings()
 
     # Handle force recreate
-    if force_recreate and COLLECTION_NAME in milvus_client.list_collections():
-        logger.warning(f"Dropping existing collection: {COLLECTION_NAME}")
-        milvus_client.drop_collection(COLLECTION_NAME)
+    if force_recreate and target_collection in milvus_client.list_collections():
+        logger.warning(f"Dropping existing collection: {target_collection}")
+        milvus_client.drop_collection(target_collection)
         # Clear tracking file when recreating collection
         if PROCESSED_INDEXING_FILE.exists():
             logger.warning(f"Clearing indexing tracking file")
             PROCESSED_INDEXING_FILE.unlink()
 
     # Create collection if it doesn't exist
-    created = create_collection(milvus_client)
+    created = create_collection(milvus_client, target_collection)
     if created:
         logger.info("New collection created - will index all data")
     else:
@@ -608,7 +636,7 @@ def index_data(force_recreate: bool = False) -> int:
     milvus_data = prepare_data_for_milvus(data_list)
 
     # Insert into Milvus
-    insert_data_to_milvus(milvus_client, milvus_data)
+    insert_data_to_milvus(milvus_client, milvus_data, target_collection)
 
     # Mark sessions as indexed
     mark_sessions_as_indexed(list(new_sessions))
@@ -618,7 +646,7 @@ def index_data(force_recreate: bool = False) -> int:
     logger.info(f"✓ Indexing complete!")
     logger.info(f"✓ {len(data_list)} time series documents indexed")
     logger.info(f"✓ {len(new_sessions)} new sessions added to Milvus")
-    logger.info(f"✓ Collection: {COLLECTION_NAME}")
+    logger.info(f"✓ Collection: {target_collection}")
     logger.info("=" * 80)
 
     return len(data_list)

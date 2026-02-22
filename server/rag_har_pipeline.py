@@ -22,7 +22,7 @@ import timeseries_indexing
 logger = logging.getLogger(__name__)
 
 
-def run_rag_pipeline(force_recreate: bool = False):
+def run_rag_pipeline(force_recreate: bool = False, collection_name: str = None):
     """
     Run the complete RAG-HAR pipeline:
     1. Preprocess data (windowing and train/test split)
@@ -34,6 +34,7 @@ def run_rag_pipeline(force_recreate: bool = False):
 
     Args:
         force_recreate: If True, drop and recreate the vector database collection
+        collection_name: Optional collection name to use (defaults to har_demo_collection)
 
     Returns:
         Dict with pipeline results
@@ -59,7 +60,7 @@ def run_rag_pipeline(force_recreate: bool = False):
 
         # Step 3: Index to vector database (train data only)
         logger.info("Step 3: Indexing to vector database...")
-        num_indexed = timeseries_indexing.index_data(force_recreate=force_recreate)
+        num_indexed = timeseries_indexing.index_data(force_recreate=force_recreate, collection_name=collection_name)
 
         logger.info("=" * 80)
         logger.info("RAG-HAR PIPELINE COMPLETED SUCCESSFULLY")
@@ -84,7 +85,7 @@ def run_rag_pipeline(force_recreate: bool = False):
         }
 
 
-def run_pipeline_async(force_recreate: bool = False):
+def run_pipeline_async(force_recreate: bool = False, collection_name: str = None):
     """
     Run the RAG-HAR pipeline asynchronously in a separate thread.
     This allows the websocket server to continue handling connections
@@ -92,6 +93,7 @@ def run_pipeline_async(force_recreate: bool = False):
 
     Args:
         force_recreate: If True, drop and recreate the vector database collection
+        collection_name: Optional collection name to use (defaults to har_demo_collection)
 
     Returns:
         Thread object
@@ -100,11 +102,11 @@ def run_pipeline_async(force_recreate: bool = False):
 
     thread = threading.Thread(
         target=run_rag_pipeline,
-        args=(force_recreate,),
+        args=(force_recreate, collection_name),
         daemon=True
     )
     thread.start()
-    logger.info("RAG-HAR pipeline started in background thread")
+    logger.info(f"RAG-HAR pipeline started in background thread (collection: {collection_name or 'default'})")
 
     return thread
 
