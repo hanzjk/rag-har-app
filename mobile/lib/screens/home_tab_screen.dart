@@ -211,7 +211,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       final currentState = sensorDataProvider.recognitionState;
       final latestData = sensorDataProvider.latestData;
 
-      // Detect state transitions for collection markers and processing timer
+      // Detect state transitions for collection markers
       if (_previousRecognitionState != currentState) {
         // Started collecting - add start marker
         if (currentState == RecognitionState.collecting) {
@@ -219,21 +219,12 @@ class _HomeTabScreenState extends State<HomeTabScreen>
             _collectionStartMarkers.add(_totalDataPointsAdded);
           });
         }
-        // Stopped collecting - add end marker
+        // Stopped collecting - add end marker (only when going to idle)
         if (_previousRecognitionState == RecognitionState.collecting &&
-            currentState != RecognitionState.collecting) {
+            currentState == RecognitionState.idle) {
           setState(() {
             _collectionEndMarkers.add(_totalDataPointsAdded);
           });
-        }
-        // Started waiting for prediction - start processing timer
-        if (currentState == RecognitionState.waitingForPrediction) {
-          _startProcessingTimer();
-        }
-        // Stopped waiting for prediction - stop processing timer
-        if (_previousRecognitionState == RecognitionState.waitingForPrediction &&
-            currentState != RecognitionState.waitingForPrediction) {
-          _stopProcessingTimer();
         }
         _previousRecognitionState = currentState;
       }
@@ -243,9 +234,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
         print('📊 Poll #$_pollCount: state=$currentState, hasData=${latestData != null}, chartPoints=${_accelX.length}');
       }
 
-      if (currentState == RecognitionState.collecting ||
-          currentState == RecognitionState.waitingForPrediction ||
-          currentState == RecognitionState.predictionReceived) {
+      if (currentState == RecognitionState.collecting) {
         // Real mode - get actual sensor data only when collecting or showing prediction
         // (not during countdown or idle when sensor isn't streaming)
         if (latestData != null) {
@@ -541,11 +530,10 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 // Show "Activity Detected" header only when we have a prediction to show
-                                // (not during collecting or waiting states)
+                                // (not during initial collecting state before first prediction)
                                 if (isEnabled &&
                                     !isWaitingForFirstPrediction &&
-                                    recognitionState != RecognitionState.collecting &&
-                                    recognitionState != RecognitionState.waitingForPrediction) ...[
+                                    sensorDataProvider.latestPrediction != null) ...[
                                   ScaleTransition(
                                     scale: _scaleAnimation,
                                     child: Row(
@@ -630,30 +618,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                         ),
                                       ],
                                     ),
-                                  ] else if (recognitionState == RecognitionState.waitingForPrediction) ...[
-                                    // Processing prediction with spinner
-                                    Row(
-                                      children: [
-                                        SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Text(
-                                          'Processing prediction...',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ] else ...[
+                                  ] else if (sensorDataProvider.latestPrediction != null) ...[
                                     // Show activity name with next prediction countdown
                                     Text(
                                       currentActivity.displayName,
@@ -980,9 +945,9 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                             ],
                           ),
                         ),
-                      // Processing timer in bottom right corner
+                      // Pending predictions counter in bottom right corner
                       if (isEnabled &&
-                          recognitionState == RecognitionState.waitingForPrediction)
+                          sensorDataProvider.pendingPredictions > 0)
                         Positioned(
                           bottom: 12,
                           right: 12,
@@ -995,14 +960,19 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.timer_outlined,
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  size: 12,
+                                SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.5,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white.withValues(alpha: 0.9),
+                                    ),
+                                  ),
                                 ),
-                                const SizedBox(width: 4),
+                                const SizedBox(width: 6),
                                 Text(
-                                  '${_processingSeconds}s',
+                                  '${sensorDataProvider.pendingPredictions} pending',
                                   style: TextStyle(
                                     color: Colors.white.withValues(alpha: 0.9),
                                     fontSize: 12,
