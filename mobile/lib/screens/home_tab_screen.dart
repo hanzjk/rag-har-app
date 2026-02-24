@@ -46,6 +46,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
   final List<int> _collectionEndMarkers = []; // Chart indices where collection ended
   int _totalDataPointsAdded = 0; // Running count to calculate relative positions
   RecognitionState? _previousRecognitionState;
+  int _previousWindowNumber = 0; // Track window number to detect window completion
 
   // Next prediction countdown timer
   Timer? _nextPredictionTimer;
@@ -175,6 +176,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       _collectionEndMarkers.clear();
       _totalDataPointsAdded = 0;
       _previousRecognitionState = null;
+      _previousWindowNumber = 0;
     });
   }
 
@@ -217,9 +219,10 @@ class _HomeTabScreenState extends State<HomeTabScreen>
         if (currentState == RecognitionState.collecting) {
           setState(() {
             _collectionStartMarkers.add(_totalDataPointsAdded);
+            _previousWindowNumber = sensorDataProvider.currentWindowNumber;
           });
         }
-        // Stopped collecting - add end marker (only when going to idle)
+        // Stopped collecting - add end marker (when going to idle)
         if (_previousRecognitionState == RecognitionState.collecting &&
             currentState == RecognitionState.idle) {
           setState(() {
@@ -227,6 +230,18 @@ class _HomeTabScreenState extends State<HomeTabScreen>
           });
         }
         _previousRecognitionState = currentState;
+      }
+
+      // Detect window completion during continuous collection
+      final currentWindowNumber = sensorDataProvider.currentWindowNumber;
+      if (currentState == RecognitionState.collecting &&
+          currentWindowNumber > _previousWindowNumber) {
+        // Window completed - add end marker for old window, start marker for new window
+        setState(() {
+          _collectionEndMarkers.add(_totalDataPointsAdded);
+          _collectionStartMarkers.add(_totalDataPointsAdded);
+        });
+        _previousWindowNumber = currentWindowNumber;
       }
 
       // Log every 40 polls (2 seconds)
@@ -322,6 +337,11 @@ class _HomeTabScreenState extends State<HomeTabScreen>
         return _getSensorSnapshots();
       });
 
+      // Set up collection start time callback
+      activityProvider.setCollectionStartTimeCallback(() {
+        return sensorDataProvider.getLastCompletedWindowStartTime();
+      });
+
       try {
         print('🌐 HomeTabScreen: Starting recognition');
         final websocketService = activityProvider.websocketService;
@@ -356,6 +376,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       sensorDataProvider.stopCollection();
       activityProvider.stopListening();
       activityProvider.setSensorDataCallback(null); // Clear sensor callback
+      activityProvider.setCollectionStartTimeCallback(null); // Clear time callback
 
       // Stop chart data polling and countdown
       _stopChartDataPolling();
@@ -529,34 +550,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Show "Activity Detected" header only when we have a prediction to show
-                                // (not during initial collecting state before first prediction)
-                                if (isEnabled &&
-                                    !isWaitingForFirstPrediction &&
-                                    sensorDataProvider.latestPrediction != null) ...[
-                                  ScaleTransition(
-                                    scale: _scaleAnimation,
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.sensors,
-                                          color: Colors.white,
-                                          size: 20,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Text(
-                                          'Activity Detected',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                ],
+                                // Header removed - using split card layout with section headers instead
                                 if (isEnabled) ...[
                                   // Show state-specific UI
                                   if (recognitionState == RecognitionState.countdown) ...[
@@ -580,90 +574,85 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                       ],
                                     ),
                                   ] else if (recognitionState == RecognitionState.collecting) ...[
-                                    // Collecting data with progress bar
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Icon(
-                                              Icons.sensors_rounded,
-                                              color: Colors.white,
-                                              size: 20,
-                                            ),
-                                            const SizedBox(width: 12),
+                                    // OPTION A: Current Activity (Big, prominent)
+                                    Center(
+                                      child: Column(
+                                        children: [
+                                          if (sensorDataProvider.latestPrediction != null) ...[
+                                            // Show detected activity
                                             Text(
-                                              'Collecting data...',
+                                              currentActivity.displayName,
                                               style: TextStyle(
                                                 color: Colors.white,
-                                                fontSize: 16,
+                                                fontSize: 32,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            // Live indicator
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.withValues(alpha: 0.3),
+                                                borderRadius: BorderRadius.circular(12),
+                                                border: Border.all(
+                                                  color: Colors.green.withValues(alpha: 0.5),
+                                                  width: 1,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Container(
+                                                    width: 8,
+                                                    height: 8,
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.greenAccent,
+                                                      shape: BoxShape.circle,
+                                                      boxShadow: [
+                                                        BoxShadow(
+                                                          color: Colors.greenAccent.withValues(alpha: 0.5),
+                                                          blurRadius: 6,
+                                                          spreadRadius: 2,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    'Live',
+                                                    style: TextStyle(
+                                                      color: Colors.greenAccent,
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ] else ...[
+                                            // No prediction yet - show waiting
+                                            Icon(
+                                              Icons.sensors,
+                                              color: Colors.white.withValues(alpha: 0.6),
+                                              size: 48,
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Text(
+                                              'Detecting Activity...',
+                                              style: TextStyle(
+                                                color: Colors.white.withValues(alpha: 0.9),
+                                                fontSize: 20,
                                                 fontWeight: FontWeight.w500,
                                               ),
                                             ),
                                           ],
-                                        ),
-                                        const SizedBox(height: 12),
-                                        // Progress bar
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(4),
-                                          child: LinearProgressIndicator(
-                                            value: sensorDataProvider.samplesInCurrentWindow /
-                                                   sensorDataProvider.windowSize,
-                                            backgroundColor: Colors.white.withValues(alpha: 0.2),
-                                            valueColor: AlwaysStoppedAnimation<Color>(
-                                              Colors.white,
-                                            ),
-                                            minHeight: 6,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ] else if (sensorDataProvider.latestPrediction != null) ...[
-                                    // Show activity name with next prediction countdown
-                                    Text(
-                                      currentActivity.displayName,
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    // Hide description in fast inference mode
-                                    if (activityProvider.activityHistory.isEmpty ||
-                                        !activityProvider.activityHistory.first.fastInference) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        activityProvider.activityHistory.isEmpty
-                                            ? _getActivityDescription(currentActivity)
-                                            : (activityProvider.activityHistory.first.reasoning ??
-                                                _getActivityDescription(currentActivity)),
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.8),
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
-                                    // Next prediction countdown
-                                    if (_nextPredictionCountdown > 0) ...[
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Icon(
-                                            Icons.timer_outlined,
-                                            color: Colors.white.withValues(alpha: 0.7),
-                                            size: 14,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            'Next prediction in ${_nextPredictionCountdown}s',
-                                            style: TextStyle(
-                                              color: Colors.white.withValues(alpha: 0.7),
-                                              fontSize: 12,
-                                            ),
-                                          ),
                                         ],
                                       ),
-                                    ],
+                                    ),
                                   ],
                                 ] else ...[
                                   // Disabled state - show with similar layout to active state
@@ -945,45 +934,108 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                             ],
                           ),
                         ),
-                      // Pending predictions counter in bottom right corner
-                      if (isEnabled &&
-                          sensorDataProvider.pendingPredictions > 0)
-                        Positioned(
-                          bottom: 12,
-                          right: 12,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SizedBox(
-                                  width: 12,
-                                  height: 12,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 1.5,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white.withValues(alpha: 0.9),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '${sensorDataProvider.pendingPredictions} pending',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.9),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                      // Pending indicator moved inline to collection status section
                     ],
+                  );
+                },
+              ),
+
+              // OPTION C: Process Status Card (Sequential flow)
+              Consumer3<ActivityProvider, AppStateProvider, SensorDataProvider>(
+                builder: (context, activityProvider, appState, sensorDataProvider, _) {
+                  final isEnabled = appState.activityRecognitionEnabled;
+                  final recognitionState = sensorDataProvider.recognitionState;
+
+                  // Only show when actively collecting (not countdown or idle)
+                  if (!isEnabled || recognitionState != RecognitionState.collecting) {
+                    return const SizedBox.shrink();
+                  }
+
+                  // Determine what phase we're in for display
+                  final pendingCount = sensorDataProvider.pendingPredictions;
+                  final samplesCollected = sensorDataProvider.samplesInCurrentWindow;
+                  final windowSize = sensorDataProvider.windowSize;
+                  final progress = samplesCollected / windowSize;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Color(0xFFE5E7EB), width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.auto_awesome,
+                                color: Color(0xFF8B5CF6),
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Recognition Pipeline',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF374151),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Step 1: Collecting
+                          _buildPipelineStep(
+                            icon: Icons.sensors,
+                            label: 'Collecting',
+                            detail: '',
+                            progress: progress,
+                            isActive: true,
+                            isComplete: false,
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // Step 2: Processing
+                          _buildPipelineStep(
+                            icon: Icons.psychology,
+                            label: 'Processing',
+                            detail: pendingCount > 0
+                                ? '$pendingCount prediction${pendingCount > 1 ? 's' : ''} in queue'
+                                : 'Waiting for data',
+                            progress: null,
+                            isActive: pendingCount > 0,
+                            isComplete: false,
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // Step 3: Detected
+                          _buildPipelineStep(
+                            icon: Icons.check_circle,
+                            label: 'Detected',
+                            detail: sensorDataProvider.latestPrediction ?? 'No prediction yet',
+                            progress: null,
+                            isActive: false,
+                            isComplete: sensorDataProvider.latestPrediction != null,
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 },
               ),
@@ -1468,6 +1520,96 @@ class _HomeTabScreenState extends State<HomeTabScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPipelineStep({
+    required IconData icon,
+    required String label,
+    required String detail,
+    double? progress,
+    required bool isActive,
+    required bool isComplete,
+  }) {
+    final Color primaryColor = isComplete
+        ? Color(0xFF10B981) // Green for complete
+        : isActive
+            ? Color(0xFF8B5CF6) // Purple for active
+            : Color(0xFF9CA3AF); // Gray for inactive
+
+    return Row(
+      children: [
+        // Icon with status indicator
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: primaryColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: primaryColor.withValues(alpha: 0.3),
+              width: 1,
+            ),
+          ),
+          child: isActive && !isComplete
+              ? Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                    ),
+                  ),
+                )
+              : Icon(
+                  isComplete ? Icons.check_circle : icon,
+                  color: primaryColor,
+                  size: 20,
+                ),
+        ),
+        const SizedBox(width: 12),
+
+        // Label and detail
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isActive || isComplete
+                      ? Color(0xFF374151)
+                      : Color(0xFF9CA3AF),
+                ),
+              ),
+              const SizedBox(height: 2),
+              if (progress != null) ...[
+                // Show progress bar for collecting step
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: Color(0xFFE5E7EB),
+                    valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                    minHeight: 6,
+                  ),
+                ),
+              ] else if (detail.isNotEmpty) ...[
+                Text(
+                  detail,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 

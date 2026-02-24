@@ -351,7 +351,7 @@ class ProgressScreen extends StatelessWidget {
                                           Text(
                                             DateFormat(
                                               'HH:mm:ss',
-                                            ).format(prediction.timestamp),
+                                            ).format(prediction.collectionStartedAt ?? prediction.timestamp),
                                             style: TextStyle(
                                               fontSize: 13,
                                               color: Colors.grey[500],

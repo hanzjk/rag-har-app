@@ -23,6 +23,8 @@ class ActivityProvider extends ChangeNotifier {
 
   // Callback to get sensor data when prediction arrives
   List<SensorSnapshot> Function()? _sensorDataCallback;
+  // Callback to get collection start time when prediction arrives
+  DateTime? Function()? _collectionStartTimeCallback;
 
   ActivityProvider({required WebSocketService websocketService})
       : _websocketService = websocketService {
@@ -32,6 +34,11 @@ class ActivityProvider extends ChangeNotifier {
   // Set callback to capture sensor data when predictions arrive
   void setSensorDataCallback(List<SensorSnapshot> Function()? callback) {
     _sensorDataCallback = callback;
+  }
+
+  // Set callback to get collection start time when predictions arrive
+  void setCollectionStartTimeCallback(DateTime? Function()? callback) {
+    _collectionStartTimeCallback = callback;
   }
 
   // Load history from shared_preferences
@@ -93,13 +100,21 @@ class ActivityProvider extends ChangeNotifier {
         sensorData = _sensorDataCallback!();
       }
 
-      // Create prediction with sensor data
+      // Get collection start time if callback is set
+      DateTime? collectionStartedAt;
+      if (_collectionStartTimeCallback != null) {
+        collectionStartedAt = _collectionStartTimeCallback!();
+      }
+
+      // Create prediction with sensor data and collection start time
       final predictionWithSensor = ActivityPrediction(
         activity: prediction.activity,
         timestamp: prediction.timestamp,
         reasoning: prediction.reasoning,
         fastInference: prediction.fastInference,
         sensorData: sensorData,
+        windowId: prediction.windowId,
+        collectionStartedAt: collectionStartedAt,
       );
 
       _activityHistory.insert(0, predictionWithSensor);

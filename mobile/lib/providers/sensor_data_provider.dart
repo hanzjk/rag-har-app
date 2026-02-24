@@ -40,6 +40,8 @@ class SensorDataProvider extends ChangeNotifier {
   int _highestDisplayedWindow = -1; // Track highest displayed to skip stale
   int _pendingPredictions = 0; // Track how many predictions are pending
   StreamSubscription? _windowAckSubscription;
+  DateTime? _currentWindowStartTime; // When current window started collecting
+  final Map<String, DateTime> _windowStartTimes = {}; // windowId -> start time
 
   SensorData? get latestData => _latestData;
   bool get isCollecting => _isCollecting;
@@ -61,6 +63,14 @@ class SensorDataProvider extends ChangeNotifier {
   bool get fastInference => _fastInference;
   int get pendingPredictions => _pendingPredictions;
   int get currentWindowNumber => _currentWindowNumber;
+
+  // Get the start time of the last completed window (for prediction timestamps)
+  DateTime? getLastCompletedWindowStartTime() {
+    // Return the most recent window start time
+    if (_windowStartTimes.isEmpty) return null;
+    final lastKey = 'window_$_currentWindowNumber';
+    return _windowStartTimes[lastKey];
+  }
 
   Duration get collectionDuration {
     if (_collectionStartTime == null) return Duration.zero;
@@ -277,6 +287,11 @@ class SensorDataProvider extends ChangeNotifier {
       _packetsSent++;
 
       if (_currentMessageType == 'predict_activity') {
+        // Track when window starts
+        if (_samplesInCurrentWindow == 0) {
+          _currentWindowStartTime = DateTime.now();
+        }
+
         _samplesInCurrentWindow++;
 
         // Check if window is complete
@@ -284,11 +299,19 @@ class SensorDataProvider extends ChangeNotifier {
           // Window complete - increment counter and reset for next window
           _currentWindowNumber++;
           _pendingPredictions++;
+
+          // Store window start time for this window number
+          final windowKey = 'window_$_currentWindowNumber';
+          if (_currentWindowStartTime != null) {
+            _windowStartTimes[windowKey] = _currentWindowStartTime!;
+          }
+
           print(
             '✅ Window $_currentWindowNumber complete ($_samplesInCurrentWindow samples). '
-            'Continuing collection (pending: $_pendingPredictions)',
+            'Started at: $_currentWindowStartTime. Continuing collection (pending: $_pendingPredictions)',
           );
           _samplesInCurrentWindow = 0;  // Reset for next window
+          _currentWindowStartTime = null;  // Reset for next window
           // Don't stop - continue collecting!
         }
       }
@@ -328,6 +351,8 @@ class SensorDataProvider extends ChangeNotifier {
     _countdown = 0;
     _recognitionState = RecognitionState.idle;
     _latestPrediction = null;
+    _currentWindowStartTime = null;
+    _windowStartTimes.clear();
     notifyListeners();
   }
 

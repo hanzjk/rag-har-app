@@ -51,6 +51,7 @@ class ActivityPrediction {
   final bool fastInference;
   final List<SensorSnapshot>? sensorData; // Sensor data window for this prediction
   final String? windowId; // Window ID for correlation with continuous collection
+  final DateTime? collectionStartedAt; // When data collection started for this window
 
   ActivityPrediction({
     required this.activity,
@@ -59,6 +60,7 @@ class ActivityPrediction {
     this.fastInference = false,
     this.sensorData,
     this.windowId,
+    this.collectionStartedAt,
   });
 
   // JSON serialization for persistence
@@ -69,6 +71,7 @@ class ActivityPrediction {
     'fast_inference': fastInference,
     'sensor_data': sensorData?.map((s) => s.toJson()).toList(),
     'window_id': windowId,
+    'collection_started_at': collectionStartedAt?.toIso8601String(),
   };
 
   factory ActivityPrediction.fromJson(Map<String, dynamic> json) {
@@ -88,6 +91,9 @@ class ActivityPrediction {
       fastInference: json['fast_inference'] ?? false,
       sensorData: sensorData,
       windowId: json['window_id'],
+      collectionStartedAt: json['collection_started_at'] != null
+          ? DateTime.parse(json['collection_started_at'])
+          : null,
     );
   }
 }
