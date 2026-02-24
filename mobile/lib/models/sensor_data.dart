@@ -9,6 +9,7 @@ class SensorData {
   final String messageType;
   final String? subjectId;
   final bool fastInference;
+  final DateTime? collectionStartTime; // When this collection window started
 
   SensorData({
     required this.timestamp,
@@ -18,6 +19,7 @@ class SensorData {
     this.messageType = 'sensor_data',
     this.subjectId = 'subject0',
     this.fastInference = false,
+    this.collectionStartTime,
   });
 
   factory SensorData.fromSensorEvents({
@@ -59,6 +61,10 @@ class SensorData {
 
     if (fastInference) {
       json['fast_inference'] = true;
+    }
+
+    if (collectionStartTime != null) {
+      json['collection_start_time'] = collectionStartTime!.toIso8601String();
     }
 
     return json;

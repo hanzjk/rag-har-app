@@ -18,7 +18,13 @@ class ProgressScreen extends StatelessWidget {
           padding: const EdgeInsets.all(16.0),
           child: Consumer<ActivityProvider>(
             builder: (context, activityProvider, _) {
-              final history = activityProvider.activityHistory;
+              // Sort history by time (newest first) using collectionStartedAt or timestamp
+              final history = List<ActivityPrediction>.from(activityProvider.activityHistory)
+                ..sort((a, b) {
+                  final timeA = a.collectionStartedAt ?? a.timestamp;
+                  final timeB = b.collectionStartedAt ?? b.timestamp;
+                  return timeB.compareTo(timeA); // Descending (newest first)
+                });
 
               // Calculate insights from history
               final activityCounts = <ActivityType, int>{};
@@ -348,14 +354,24 @@ class ProgressScreen extends StatelessWidget {
                                             ),
                                           ),
                                           const SizedBox(height: 2),
-                                          Text(
-                                            DateFormat(
-                                              'HH:mm:ss',
-                                            ).format(prediction.collectionStartedAt ?? prediction.timestamp),
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.grey[500],
-                                            ),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.play_circle_outline,
+                                                size: 12,
+                                                color: Colors.grey[400],
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                DateFormat(
+                                                  'HH:mm:ss',
+                                                ).format(prediction.collectionStartedAt ?? prediction.timestamp),
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  color: Colors.grey[500],
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
@@ -395,14 +411,35 @@ class ProgressScreen extends StatelessWidget {
     // Get predictions with sensor data (reversed to show oldest first)
     final predictionsWithData = history
         .where((p) => p.sensorData != null && p.sensorData!.isNotEmpty)
-        .take(20)
+        .take(50)
         .toList()
         .reversed
         .toList();
 
     if (predictionsWithData.isEmpty) {
-      // Fall back to simple activity timeline if no sensor data
-      return _buildSimpleActivityTimeline(history);
+      // No sensor data available - show message instead of graphs
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.show_chart, size: 20, color: Colors.grey[400]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Sensor graphs will appear here once new predictions are made',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[500],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     // Combine sensor data from all predictions
@@ -436,7 +473,29 @@ class ProgressScreen extends StatelessWidget {
     }
 
     if (accelX.isEmpty) {
-      return _buildSimpleActivityTimeline(history);
+      // No sensor data in predictions
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.show_chart, size: 20, color: Colors.grey[400]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Sensor graphs will appear here once new predictions are made',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[500],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     return Column(
@@ -645,117 +704,6 @@ class ProgressScreen extends StatelessWidget {
         ),
         const SizedBox(width: 4),
         Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
-      ],
-    );
-  }
-
-  Widget _buildSimpleActivityTimeline(List<ActivityPrediction> history) {
-    final timelineData = history.take(20).toList().reversed.toList();
-
-    if (timelineData.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.timeline, size: 16, color: Color(0xFF6B7280)),
-            const SizedBox(width: 6),
-            Text(
-              'Activity Timeline',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF6B7280),
-              ),
-            ),
-            const Spacer(),
-            Text(
-              'Last ${timelineData.length} predictions',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey[400],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 130,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              // ~100px per activity, so 3 activities fit in ~300px visible area
-              width: (timelineData.length * 100.0).clamp(300.0, double.infinity),
-              child: LineChart(
-                LineChartData(
-                  // Add buffer to prevent top/bottom label clipping
-                  minY: -0.5,
-                  maxY: ActivityType.values.length.toDouble() - 0.5,
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: 1,
-                  ),
-                  titlesData: FlTitlesData(
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 45,
-                        getTitlesWidget: (value, meta) {
-                          final index = value.toInt();
-                          if (index < 0 || index >= ActivityType.values.length) {
-                            return const SizedBox.shrink();
-                          }
-                          final activity = ActivityType.values[index];
-                          if (activity == ActivityType.unknown) {
-                            return const SizedBox.shrink();
-                          }
-                          return Text(
-                            activity.shortName,
-                            style: TextStyle(fontSize: 9, color: activity.color),
-                          );
-                        },
-                      ),
-                    ),
-                    bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: timelineData.asMap().entries.map((entry) {
-                        return FlSpot(
-                          entry.key.toDouble(),
-                          entry.value.activity.index.toDouble(),
-                        );
-                      }).toList(),
-                      isCurved: false,
-                      isStepLineChart: true,
-                      color: Color(0xFF3B82F6),
-                      barWidth: 2,
-                      dotData: FlDotData(
-                        show: true,
-                        getDotPainter: (spot, percent, bar, index) {
-                          final activity = ActivityType.values[spot.y.toInt()];
-                          return FlDotCirclePainter(
-                            radius: 4,
-                            color: activity.color,
-                            strokeWidth: 1.5,
-                            strokeColor: Colors.white,
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }

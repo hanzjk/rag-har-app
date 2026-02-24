@@ -41,7 +41,7 @@ class SensorDataProvider extends ChangeNotifier {
   int _pendingPredictions = 0; // Track how many predictions are pending
   StreamSubscription? _windowAckSubscription;
   DateTime? _currentWindowStartTime; // When current window started collecting
-  final Map<String, DateTime> _windowStartTimes = {}; // windowId -> start time
+  final List<DateTime> _windowStartTimeQueue = []; // FIFO queue of window start times
 
   SensorData? get latestData => _latestData;
   bool get isCollecting => _isCollecting;
@@ -64,12 +64,17 @@ class SensorDataProvider extends ChangeNotifier {
   int get pendingPredictions => _pendingPredictions;
   int get currentWindowNumber => _currentWindowNumber;
 
-  // Get the start time of the last completed window (for prediction timestamps)
+  // Get and remove the oldest window start time (FIFO - for prediction timestamps)
+  // This should be called when a prediction arrives to get the correct corresponding time
+  DateTime? consumeOldestWindowStartTime() {
+    if (_windowStartTimeQueue.isEmpty) return null;
+    return _windowStartTimeQueue.removeAt(0);
+  }
+
+  // Peek at the oldest window start time without removing (for display purposes)
   DateTime? getLastCompletedWindowStartTime() {
-    // Return the most recent window start time
-    if (_windowStartTimes.isEmpty) return null;
-    final lastKey = 'window_$_currentWindowNumber';
-    return _windowStartTimes[lastKey];
+    if (_windowStartTimeQueue.isEmpty) return null;
+    return _windowStartTimeQueue.first;
   }
 
   Duration get collectionDuration {
@@ -271,6 +276,11 @@ class SensorDataProvider extends ChangeNotifier {
     });
 
     _subscription = _sensorService.getSensorStream().listen((data) {
+      // Track when window starts (BEFORE creating SensorData so first sample has the time)
+      if (_currentMessageType == 'predict_activity' && _samplesInCurrentWindow == 0) {
+        _currentWindowStartTime = DateTime.now();
+      }
+
       // Always update latestData for chart display
       final labeledData = SensorData(
         timestamp: data.timestamp,
@@ -279,6 +289,7 @@ class SensorDataProvider extends ChangeNotifier {
         activityLabel: _currentActivityLabel,
         messageType: _currentMessageType,
         fastInference: _fastInference,
+        collectionStartTime: _currentWindowStartTime,
       );
       _latestData = labeledData;
 
@@ -287,11 +298,6 @@ class SensorDataProvider extends ChangeNotifier {
       _packetsSent++;
 
       if (_currentMessageType == 'predict_activity') {
-        // Track when window starts
-        if (_samplesInCurrentWindow == 0) {
-          _currentWindowStartTime = DateTime.now();
-        }
-
         _samplesInCurrentWindow++;
 
         // Check if window is complete
@@ -300,15 +306,14 @@ class SensorDataProvider extends ChangeNotifier {
           _currentWindowNumber++;
           _pendingPredictions++;
 
-          // Store window start time for this window number
-          final windowKey = 'window_$_currentWindowNumber';
+          // Store window start time in FIFO queue (will be consumed when prediction arrives)
           if (_currentWindowStartTime != null) {
-            _windowStartTimes[windowKey] = _currentWindowStartTime!;
+            _windowStartTimeQueue.add(_currentWindowStartTime!);
           }
 
           print(
             '✅ Window $_currentWindowNumber complete ($_samplesInCurrentWindow samples). '
-            'Started at: $_currentWindowStartTime. Continuing collection (pending: $_pendingPredictions)',
+            'Started at: $_currentWindowStartTime. Queue size: ${_windowStartTimeQueue.length}. Continuing collection (pending: $_pendingPredictions)',
           );
           _samplesInCurrentWindow = 0;  // Reset for next window
           _currentWindowStartTime = null;  // Reset for next window
@@ -352,7 +357,7 @@ class SensorDataProvider extends ChangeNotifier {
     _recognitionState = RecognitionState.idle;
     _latestPrediction = null;
     _currentWindowStartTime = null;
-    _windowStartTimes.clear();
+    _windowStartTimeQueue.clear();
     notifyListeners();
   }
 

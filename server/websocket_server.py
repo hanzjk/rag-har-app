@@ -71,12 +71,12 @@ async def handle_client(websocket):
     prediction_semaphore = asyncio.Semaphore(3)  # Max 3 concurrent predictions
     pending_tasks: Set[asyncio.Task] = set()
 
-    async def process_prediction_async(window_id: str, window_data: list, fast_inference: bool):
+    async def process_prediction_async(window_id: str, window_data: list, fast_inference: bool, collection_start_time: str = None):
         """Process a single prediction asynchronously."""
         async with prediction_semaphore:
-            logger.info(f"Starting prediction for window {window_id}")
+            logger.info(f"Starting prediction for window {window_id} (collection_start_time: {collection_start_time})")
             prediction = await client_predictor.predict_async(
-                window_id, window_data, fast_inference
+                window_id, window_data, fast_inference, collection_start_time
             )
 
             # Log prediction window if enabled
@@ -217,11 +217,11 @@ async def handle_client(websocket):
                     # Extract fast_inference flag from the message
                     fast_inference = data.get("fast_inference", False)
 
-                    # Capture window (non-blocking) - returns (window_id, data) when ready
+                    # Capture window (non-blocking) - returns (window_id, data, collection_start_time) when ready
                     result = client_predictor.capture_window(data)
 
                     if result is not None:
-                        window_id, window_data = result
+                        window_id, window_data, collection_start_time = result
 
                         # Send immediate acknowledgment that window was received
                         ack = {
@@ -230,11 +230,11 @@ async def handle_client(websocket):
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                         await websocket.send(json.dumps(ack))
-                        logger.info(f"Window {window_id} acknowledged, starting async prediction")
+                        logger.info(f"Window {window_id} acknowledged, starting async prediction (collection_start_time: {collection_start_time})")
 
                         # Start async prediction (fire and forget)
                         task = asyncio.create_task(
-                            process_prediction_async(window_id, window_data, fast_inference)
+                            process_prediction_async(window_id, window_data, fast_inference, collection_start_time)
                         )
                         pending_tasks.add(task)
                         task.add_done_callback(pending_tasks.discard)

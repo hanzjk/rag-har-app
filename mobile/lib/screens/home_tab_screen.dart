@@ -17,17 +17,13 @@ class HomeTabScreen extends StatefulWidget {
   State<HomeTabScreen> createState() => _HomeTabScreenState();
 }
 
-class _HomeTabScreenState extends State<HomeTabScreen>
-    with TickerProviderStateMixin {
+class _HomeTabScreenState extends State<HomeTabScreen> with SingleTickerProviderStateMixin {
   final PermissionService _permissionService = PermissionService();
-  late AnimationController _activityAnimationController;
-  late AnimationController _cardFlashController;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _flashAnimation;
-  ActivityType? _previousActivity;
   bool _hasAutoStarted = false;
-  bool _hasReceivedFirstPrediction = false;
-  int _predictionCount = 0; // Track number of predictions to trigger animation
+
+  // Live badge blink animation
+  late AnimationController _blinkController;
+  late Animation<double> _blinkAnimation;
 
   // Live chart data - store last 100 points (2 seconds at 50Hz)
   final List<double> _accelX = [];
@@ -56,41 +52,73 @@ class _HomeTabScreenState extends State<HomeTabScreen>
   Timer? _processingTimer;
   int _processingSeconds = 0;
 
+  // Activity Detected text visibility (shows for 2 seconds after new prediction)
+  bool _showActivityDetected = false;
+  Timer? _activityDetectedTimer;
+
+  // Track last prediction timestamp to detect new predictions
+  DateTime? _lastPredictionTimestamp;
+
+  // Flag to prevent adding duplicate listeners
+  bool _activityListenerAdded = false;
+
+  // Store reference to provider to avoid looking it up after dispose
+  ActivityProvider? _activityProviderRef;
+
   @override
   void initState() {
     super.initState();
-    _activityAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+    // Initialize blink animation for Live badge
+    _blinkController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
       vsync: this,
-    );
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _activityAnimationController,
-        curve: Curves.elasticOut,
-      ),
-    );
+    )..repeat(reverse: true);
+    _blinkAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(_blinkController);
+  }
 
-    // Card flash animation
-    _cardFlashController = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-    _flashAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _cardFlashController, curve: Curves.easeInOut),
-    );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Listen for new predictions from ActivityProvider (only add once)
+    if (!_activityListenerAdded) {
+      _activityProviderRef = Provider.of<ActivityProvider>(context, listen: false);
+      _activityProviderRef!.addListener(_onActivityProviderChanged);
+      _activityListenerAdded = true;
+    }
+  }
+
+  void _onActivityProviderChanged() {
+    // Check if widget is still mounted before accessing state
+    if (!mounted || _activityProviderRef == null) return;
+
+    if (_activityProviderRef!.activityHistory.isNotEmpty) {
+      final latestPrediction = _activityProviderRef!.activityHistory.first;
+      // Check if this is a new prediction by comparing timestamps
+      if (_lastPredictionTimestamp == null ||
+          latestPrediction.timestamp != _lastPredictionTimestamp) {
+        _lastPredictionTimestamp = latestPrediction.timestamp;
+        print('🎬 HomeTabScreen: New prediction detected via listener! ${latestPrediction.activity.displayName}');
+        _showActivityDetectedText();
+        _startNextPredictionCountdown();
+      }
+    }
   }
 
   @override
   void dispose() {
-    _activityAnimationController.dispose();
-    _cardFlashController.dispose();
+    // Remove listener using stored reference
+    _activityProviderRef?.removeListener(_onActivityProviderChanged);
+    _activityProviderRef = null;
+    _blinkController.dispose();
     _stopChartDataPolling();
     _stopNextPredictionCountdown();
     _stopProcessingTimer();
+    _stopActivityDetectedTimer();
     super.dispose();
   }
 
   void _startNextPredictionCountdown() {
+    if (!mounted) return;
     _stopNextPredictionCountdown();
     // Set initial value and trigger rebuild immediately
     setState(() {
@@ -115,6 +143,26 @@ class _HomeTabScreenState extends State<HomeTabScreen>
     _nextPredictionTimer?.cancel();
     _nextPredictionTimer = null;
     _nextPredictionCountdown = 0;
+  }
+
+  void _showActivityDetectedText() {
+    if (!mounted) return;
+    _activityDetectedTimer?.cancel();
+    setState(() {
+      _showActivityDetected = true;
+    });
+    _activityDetectedTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() {
+        _showActivityDetected = false;
+      });
+    });
+  }
+
+  void _stopActivityDetectedTimer() {
+    _activityDetectedTimer?.cancel();
+    _activityDetectedTimer = null;
+    _showActivityDetected = false;
   }
 
   void _startProcessingTimer() {
@@ -205,11 +253,14 @@ class _HomeTabScreenState extends State<HomeTabScreen>
 
     print('📊 Chart polling started');
 
-    int _pollCount = 0;
+    int pollCount = 0;
     _chartDataTimer = Timer.periodic(Duration(milliseconds: 50), (timer) {
-      if (!mounted) return;
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
 
-      _pollCount++;
+      pollCount++;
       final currentState = sensorDataProvider.recognitionState;
       final latestData = sensorDataProvider.latestData;
 
@@ -245,8 +296,8 @@ class _HomeTabScreenState extends State<HomeTabScreen>
       }
 
       // Log every 40 polls (2 seconds)
-      if (_pollCount % 40 == 0) {
-        print('📊 Poll #$_pollCount: state=$currentState, hasData=${latestData != null}, chartPoints=${_accelX.length}');
+      if (pollCount % 40 == 0) {
+        print('📊 Poll #$pollCount: state=$currentState, hasData=${latestData != null}, chartPoints=${_accelX.length}');
       }
 
       if (currentState == RecognitionState.collecting) {
@@ -337,9 +388,10 @@ class _HomeTabScreenState extends State<HomeTabScreen>
         return _getSensorSnapshots();
       });
 
-      // Set up collection start time callback
+      // Set up collection start time callback - consumes from FIFO queue
+      // so each prediction gets its own corresponding window start time
       activityProvider.setCollectionStartTimeCallback(() {
-        return sensorDataProvider.getLastCompletedWindowStartTime();
+        return sensorDataProvider.consumeOldestWindowStartTime();
       });
 
       try {
@@ -427,52 +479,12 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                   final currentActivity = activityProvider.currentActivity;
                   final isEnabled = appState.activityRecognitionEnabled;
                   final recognitionState = sensorDataProvider.recognitionState;
-                  final currentPredictionCount =
-                      activityProvider.activityHistory.length;
-
-                  // Detect new prediction by checking history count
-                  if (currentPredictionCount > _predictionCount &&
-                      currentActivity != ActivityType.unknown &&
-                      isEnabled) {
-                    _predictionCount = currentPredictionCount;
-                    if (!_hasReceivedFirstPrediction) {
-                      print(
-                        '🎊 HomeTabScreen: First prediction received! ${currentActivity.displayName}',
-                      );
-                      _hasReceivedFirstPrediction = true;
-                    } else {
-                      print(
-                        '🎯 HomeTabScreen: New prediction #$currentPredictionCount received! ${currentActivity.displayName} (${_previousActivity == currentActivity ? "SAME ACTIVITY" : "CHANGED"})',
-                      );
-                    }
-                    // Trigger animations for EVERY prediction (even if same activity)
-                    print(
-                      '🎬 HomeTabScreen: Triggering bounce and flash animations!',
-                    );
-                    _activityAnimationController.reset();
-                    _activityAnimationController.forward();
-                    _cardFlashController.reset();
-                    _cardFlashController.forward();
-
-                    // Start next prediction countdown
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      _startNextPredictionCountdown();
-                    });
-                  }
-
-                  // Reset flags when disabled
+                  // Reset state when disabled
                   if (!isEnabled) {
-                    _hasReceivedFirstPrediction = false;
-                    _predictionCount = 0;
+                    _showActivityDetected = false;
+                    _activityDetectedTimer?.cancel();
+                    _lastPredictionTimestamp = null;
                   }
-
-                  // Show processing state before first prediction (during both collecting and waiting)
-                  final isWaitingForFirstPrediction =
-                      isEnabled &&
-                      !_hasReceivedFirstPrediction &&
-                      recognitionState != RecognitionState.idle;
-
-                  _previousActivity = currentActivity;
 
                   // Auto-start recognition if enabled and not running (only once)
                   if (isEnabled &&
@@ -491,63 +503,33 @@ class _HomeTabScreenState extends State<HomeTabScreen>
 
                   return Stack(
                     children: [
-                      AnimatedBuilder(
-                        animation: _flashAnimation,
-                        builder: (context, child) {
-                          // Create flash effect that peaks and fades (0 → 1 → 0)
-                          final flashValue = _flashAnimation.value < 0.5
-                              ? _flashAnimation.value *
-                                    2 // 0 to 1 (first half)
-                              : (1 - _flashAnimation.value) *
-                                    2; // 1 to 0 (second half)
-
-                          return Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: isEnabled
-                                    ? [
-                                        Color.lerp(
-                                          Color(0xFF8B5CF6),
-                                          Color(0xFFFFFFFF),
-                                          flashValue * 0.4,
-                                        )!,
-                                        Color.lerp(
-                                          Color(0xFF9333EA),
-                                          Color(0xFFFFFFFF),
-                                          flashValue * 0.4,
-                                        )!,
-                                      ]
-                                    : [Color(0xFF9CA3AF), Color(0xFF6B7280)],
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isEnabled
-                                    ? Color(0xFFC084FC).withValues(alpha: 0.3)
-                                    : Color(0xFF9CA3AF).withValues(alpha: 0.3),
-                                width: 1,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.05),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 1),
-                                ),
-                                // Add glow during flash
-                                if (flashValue > 0.1)
-                                  BoxShadow(
-                                    color: Color(
-                                      0xFF8B5CF6,
-                                    ).withValues(alpha: flashValue * 0.5),
-                                    blurRadius: 24 * flashValue,
-                                    offset: const Offset(0, 0),
-                                  ),
-                              ],
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isEnabled
+                                ? [Color(0xFF8B5CF6), Color(0xFF9333EA)]
+                                : [Color(0xFF9CA3AF), Color(0xFF6B7280)],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isEnabled
+                                ? Color(0xFFC084FC).withValues(alpha: 0.3)
+                                : Color(0xFF9CA3AF).withValues(alpha: 0.3),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
                             ),
-                            child: Column(
+                          ],
+                        ),
+                        child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 // Header removed - using split card layout with section headers instead
@@ -579,6 +561,8 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                       child: Column(
                                         children: [
                                           if (sensorDataProvider.latestPrediction != null) ...[
+                                            // Space for "Activity Detected" text at top
+                                            const SizedBox(height: 16),
                                             // Show detected activity
                                             Text(
                                               currentActivity.displayName,
@@ -588,51 +572,42 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                                 fontWeight: FontWeight.bold,
                                               ),
                                             ),
-                                            const SizedBox(height: 8),
-                                            // Live indicator
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 12,
-                                                vertical: 4,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.green.withValues(alpha: 0.3),
-                                                borderRadius: BorderRadius.circular(12),
-                                                border: Border.all(
-                                                  color: Colors.green.withValues(alpha: 0.5),
-                                                  width: 1,
+                                            // Show reasoning when not in fast inference mode
+                                            if (!sensorDataProvider.fastInference &&
+                                                activityProvider.activityHistory.isNotEmpty &&
+                                                activityProvider.activityHistory.first.reasoning != null) ...[
+                                              const SizedBox(height: 12),
+                                              Container(
+                                                padding: const EdgeInsets.all(12),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white.withValues(alpha: 0.15),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.psychology,
+                                                      color: Colors.white.withValues(alpha: 0.8),
+                                                      size: 16,
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: Text(
+                                                        activityProvider.activityHistory.first.reasoning!,
+                                                        style: TextStyle(
+                                                          color: Colors.white.withValues(alpha: 0.9),
+                                                          fontSize: 12,
+                                                          height: 1.4,
+                                                        ),
+                                                        maxLines: 4,
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Container(
-                                                    width: 8,
-                                                    height: 8,
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.greenAccent,
-                                                      shape: BoxShape.circle,
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: Colors.greenAccent.withValues(alpha: 0.5),
-                                                          blurRadius: 6,
-                                                          spreadRadius: 2,
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Text(
-                                                    'Live',
-                                                    style: TextStyle(
-                                                      color: Colors.greenAccent,
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
+                                            ],
                                           ] else ...[
                                             // No prediction yet - show waiting
                                             Icon(
@@ -822,9 +797,81 @@ class _HomeTabScreenState extends State<HomeTabScreen>
                                 ),
                               ],
                             ),
-                          );
-                        },
                       ),
+                      // Live badge OR Activity Detected text in top-left corner
+                      if (isEnabled &&
+                          recognitionState == RecognitionState.collecting &&
+                          sensorDataProvider.latestPrediction != null)
+                        Positioned(
+                          top: 12,
+                          left: 12,
+                          child: _showActivityDetected
+                              ? Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.auto_awesome,
+                                      size: 14,
+                                      color: Colors.white.withValues(alpha: 0.8),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Activity Detected',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white.withValues(alpha: 0.8),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : FadeTransition(
+                                  opacity: _blinkAnimation,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withValues(alpha: 0.3),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.green.withValues(alpha: 0.5),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: Colors.greenAccent,
+                                            shape: BoxShape.circle,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.greenAccent.withValues(alpha: 0.5),
+                                                blurRadius: 6,
+                                                spreadRadius: 2,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Live',
+                                          style: TextStyle(
+                                            color: Colors.greenAccent,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                        ),
                       // Controls in top-right corner when recognition is active
                       if (isEnabled &&
                           recognitionState != RecognitionState.idle)
@@ -1024,13 +1071,13 @@ class _HomeTabScreenState extends State<HomeTabScreen>
 
                           const SizedBox(height: 12),
 
-                          // Step 3: Detected
+                          // Step 3: Detecting (shows green spinner for continuous detection)
                           _buildPipelineStep(
                             icon: Icons.check_circle,
-                            label: 'Detected',
+                            label: 'Detecting',
                             detail: sensorDataProvider.latestPrediction ?? 'No prediction yet',
                             progress: null,
-                            isActive: false,
+                            isActive: sensorDataProvider.latestPrediction != null, // Green spinner when detecting
                             isComplete: sensorDataProvider.latestPrediction != null,
                           ),
                         ],
@@ -1551,7 +1598,7 @@ class _HomeTabScreenState extends State<HomeTabScreen>
               width: 1,
             ),
           ),
-          child: isActive && !isComplete
+          child: isActive
               ? Center(
                   child: SizedBox(
                     width: 18,

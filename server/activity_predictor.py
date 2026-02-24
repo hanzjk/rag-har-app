@@ -49,6 +49,9 @@ class ActivityPredictor:
         self.samples_received = 0
         self.samples_since_last_prediction = 0
 
+        # Track collection start time for current window
+        self._current_window_start_time = None
+
         if classifier:
             logger.info(
                 f"Activity predictor initialized with RAG classifier "
@@ -96,7 +99,7 @@ class ActivityPredictor:
             )
             return None  # No prediction this sample
 
-    def capture_window(self, sensor_data: dict) -> Optional[Tuple[str, list]]:
+    def capture_window(self, sensor_data: dict) -> Optional[Tuple[str, list, Optional[str]]]:
         """
         Add sensor data to window and capture completed windows for async prediction.
 
@@ -107,9 +110,14 @@ class ActivityPredictor:
             sensor_data: Dictionary containing sensor readings
 
         Returns:
-            Tuple of (window_id, window_data) when a complete window is ready,
+            Tuple of (window_id, window_data, collection_start_time) when a complete window is ready,
             None otherwise (still buffering)
         """
+        # Track collection start time from the first sample in this window
+        if self.samples_since_last_prediction == 0:
+            # First sample of new window - capture collection_start_time from client
+            self._current_window_start_time = sensor_data.get("collection_start_time")
+
         # Add new sample to sliding window
         self._add_to_window(sensor_data)
 
@@ -123,15 +131,20 @@ class ActivityPredictor:
                 window_id = str(uuid.uuid4())[:8]
                 # Capture window data (copy since window will continue to be used)
                 window_data = list(self.window)
+                # Capture collection start time before resetting
+                collection_start_time = self._current_window_start_time
                 self.samples_since_last_prediction = 0
+                self._current_window_start_time = None  # Reset for next window
 
                 logger.info(
-                    f"Window {window_id} captured with {len(window_data)} samples"
+                    f"Window {window_id} captured with {len(window_data)} samples "
+                    f"(collection_start_time: {collection_start_time})"
                 )
-                return (window_id, window_data)
+                return (window_id, window_data, collection_start_time)
             else:
                 # Not enough samples yet, reset counter
                 self.samples_since_last_prediction = 0
+                self._current_window_start_time = None
                 logger.warning(
                     f"Step boundary reached but insufficient samples: "
                     f"{len(self.window)}/{self.min_samples}"
@@ -140,7 +153,8 @@ class ActivityPredictor:
         return None
 
     async def predict_async(
-        self, window_id: str, window_data: list, fast_inference: bool = False
+        self, window_id: str, window_data: list, fast_inference: bool = False,
+        collection_start_time: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Async prediction method for parallel processing.
@@ -149,6 +163,7 @@ class ActivityPredictor:
             window_id: Unique identifier for this window
             window_data: List of sensor reading dicts
             fast_inference: If True, use faster inference
+            collection_start_time: ISO timestamp when data collection started for this window
 
         Returns:
             Prediction dict with window_id for correlation
@@ -161,6 +176,7 @@ class ActivityPredictor:
                 "activity": "error",
                 "error": "RAG classifier not initialized",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
+                "collection_started_at": collection_start_time,
             }
 
         try:
@@ -185,6 +201,7 @@ class ActivityPredictor:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "window_size": len(window_data),
                 "method": "rag_classifier",
+                "collection_started_at": collection_start_time,  # Echo back for client correlation
             }
 
         except Exception as e:
@@ -198,6 +215,7 @@ class ActivityPredictor:
                 "activity": "unknown",
                 "error": str(e),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
+                "collection_started_at": collection_start_time,
             }
 
     def _add_to_window(self, sensor_data: dict):

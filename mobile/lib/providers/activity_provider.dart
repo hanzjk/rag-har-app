@@ -91,7 +91,7 @@ class ActivityProvider extends ChangeNotifier {
     // Use real websocket service
     print('🎧 ActivityProvider: Starting to listen to activityStream...');
     _subscription = _websocketService.activityStream.listen((prediction) {
-      print('🎉 ActivityProvider: Received prediction - ${prediction.activity.displayName}');
+      print('🎉 ActivityProvider: Received prediction - ${prediction.activity.displayName} (windowId: ${prediction.windowId}, collectionStartedAt: ${prediction.collectionStartedAt})');
       _currentActivity = prediction.activity;
 
       // Capture sensor data if callback is set
@@ -100,9 +100,9 @@ class ActivityProvider extends ChangeNotifier {
         sensorData = _sensorDataCallback!();
       }
 
-      // Get collection start time if callback is set
-      DateTime? collectionStartedAt;
-      if (_collectionStartTimeCallback != null) {
+      // Use collection start time from server (echoed back) or fallback to callback
+      DateTime? collectionStartedAt = prediction.collectionStartedAt;
+      if (collectionStartedAt == null && _collectionStartTimeCallback != null) {
         collectionStartedAt = _collectionStartTimeCallback!();
       }
 
@@ -124,7 +124,7 @@ class ActivityProvider extends ChangeNotifier {
       }
 
       _saveHistory(); // Persist to storage
-      print('📢 ActivityProvider: Notifying listeners (activity: ${_currentActivity.displayName})');
+      print('📢 ActivityProvider: Added to history - ${_currentActivity.displayName} (collectionStartedAt: $collectionStartedAt, historySize: ${_activityHistory.length})');
       notifyListeners();
     });
     print('✅ ActivityProvider: Subscription set up');

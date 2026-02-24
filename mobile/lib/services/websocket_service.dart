@@ -340,6 +340,7 @@ class WebSocketService {
       String? reasoning;
       String? windowId;
       bool fastInference = false;
+      DateTime? collectionStartedAt;
 
       if (messageType == 'activity_prediction') {
         // Skip buffering/initializing predictions
@@ -355,6 +356,15 @@ class WebSocketService {
         reasoning = data['reasoning'];  // Extract reasoning if present
         fastInference = data['fast_inference'] ?? false;
         windowId = data['window_id'];  // Extract window_id for correlation
+
+        // Parse collection_started_at if server echoes it back
+        if (data['collection_started_at'] != null) {
+          try {
+            collectionStartedAt = DateTime.parse(data['collection_started_at']);
+          } catch (e) {
+            print('WebSocketService: Error parsing collection_started_at: $e');
+          }
+        }
       } else if (data.containsKey('prediction')) {
         activity = data['prediction'];
         reasoning = data['reasoning'];  // Extract reasoning if present
@@ -365,7 +375,7 @@ class WebSocketService {
         final reasoningPreview = reasoning != null
             ? reasoning.substring(0, reasoning.length > 50 ? 50 : reasoning.length)
             : 'none';
-        print('WebSocketService: Adding prediction to activityStream: $activity (windowId: $windowId, fastInference: $fastInference, reasoning: $reasoningPreview...)');
+        print('WebSocketService: Adding prediction to activityStream: $activity (windowId: $windowId, collectionStartedAt: $collectionStartedAt, fastInference: $fastInference, reasoning: $reasoningPreview...)');
         _activityController.add(
           ActivityPrediction(
             activity: ActivityType.fromString(activity),
@@ -373,6 +383,7 @@ class WebSocketService {
             reasoning: reasoning,
             fastInference: fastInference,
             windowId: windowId,
+            collectionStartedAt: collectionStartedAt,
           ),
         );
         print('WebSocketService: Prediction added to activityStream');
