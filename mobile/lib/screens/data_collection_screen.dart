@@ -491,7 +491,6 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                               _buildActivityButton('Sitting', '🪑', 'sitting'),
                               _buildActivityButton('Standing', '🧍', 'standing'),
                               _buildActivityButton('Jumping', '🦘', 'jumping'),
-                              _buildActivityButton('Lying Down', '🛏️', 'lying_down'),
                             ],
                           ),
                         ],
@@ -946,8 +945,6 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
         return 'Standing';
       case 'jumping':
         return 'Jumping';
-      case 'lying_down':
-        return 'Lying Down';
       default:
         return value;
     }

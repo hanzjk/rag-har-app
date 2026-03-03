@@ -456,8 +456,6 @@ class _HomeTabScreenState extends State<HomeTabScreen> with SingleTickerProvider
         return 'Stationary position with slight movements';
       case ActivityType.jumping:
         return 'Vertical movement with high acceleration detected';
-      case ActivityType.lying:
-        return 'Horizontal position with minimal movement detected';
       case ActivityType.unknown:
         return 'Analyzing movement patterns...';
     }

@@ -5,7 +5,6 @@ enum ActivityType {
   running,
   sitting,
   standing,
-  lying,
   jumping,
   unknown;
 
@@ -19,10 +18,6 @@ enum ActivityType {
         return ActivityType.sitting;
       case 'standing':
         return ActivityType.standing;
-      case 'lying_down':
-        return ActivityType.lying;
-      case 'lying':
-        return ActivityType.lying;
       case 'jumping':
         return ActivityType.jumping;
       default:
@@ -40,8 +35,6 @@ enum ActivityType {
         return 'Sitting';
       case ActivityType.standing:
         return 'Standing';
-      case ActivityType.lying:
-        return 'Lying';
       case ActivityType.jumping:
         return 'Jumping';
       case ActivityType.unknown:
@@ -60,8 +53,6 @@ enum ActivityType {
         return 'Sit';
       case ActivityType.standing:
         return 'Stand';
-      case ActivityType.lying:
-        return 'Lie';
       case ActivityType.jumping:
         return 'Jump';
       case ActivityType.unknown:
@@ -80,8 +71,6 @@ enum ActivityType {
         return const Color(0xFF10B981); // Green
       case ActivityType.standing:
         return const Color(0xFF8B5CF6); // Purple
-      case ActivityType.lying:
-        return const Color(0xFF6366F1); // Indigo
       case ActivityType.jumping:
         return const Color(0xFFF59E0B); // Amber
       case ActivityType.unknown:

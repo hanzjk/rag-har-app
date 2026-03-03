@@ -110,7 +110,6 @@ class RAGActivityClassifier:
             "sitting",
             "standing",
             "jumping",
-            "lying_down",
         ]
         self.statistics = ["mean", "std", "min", "max", "median", "p25", "p75"]
         self.sensor_columns = ["accel", "gyro"]

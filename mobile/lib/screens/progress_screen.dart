@@ -776,8 +776,6 @@ class ProgressScreen extends StatelessWidget {
         return Icons.accessibility_new;
       case ActivityType.jumping:
         return Icons.trending_up;
-      case ActivityType.lying:
-        return Icons.hotel;
       case ActivityType.unknown:
         return Icons.help_outline;
     }
@@ -795,8 +793,6 @@ class ProgressScreen extends StatelessWidget {
         return Color(0xFFF59E0B);
       case ActivityType.jumping:
         return Color(0xFF8B5CF6);
-      case ActivityType.lying:
-        return Color(0xFF06B6D4);
       case ActivityType.unknown:
         return Color(0xFF6B7280);
     }
