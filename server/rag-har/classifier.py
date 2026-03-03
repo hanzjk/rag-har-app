@@ -91,7 +91,7 @@ class RAGActivityClassifier:
         self,
         model: str = "gpt-5-mini",
         fewshot: int = 30,
-        out_fewshot: int = 20,
+        out_fewshot: int = 5,
     ):
         """
         Initialize RAG classifier.
@@ -656,7 +656,7 @@ class RAGActivityClassifier:
             # FAST INFERENCE: Use gpt-5-mini without structured output for speed
             fast_model = "gpt-5-mini"
             system_prompt = (
-                f"Classify the activity. Reply with ONLY one word from: {classes_str}"
+                f"Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str}"
             )
 
             logger.info(f"FAST INFERENCE: Using {fast_model} without structured output")
@@ -1036,8 +1036,8 @@ def main():
     print("Initializing RAG classifier...")
     classifier = RAGActivityClassifier(
         model="gpt-5-mini",
-        fewshot=15,
-        out_fewshot=10,
+        fewshot=10,
+        out_fewshot=5,
     )
     print("")
 

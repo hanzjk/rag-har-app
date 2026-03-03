@@ -445,8 +445,8 @@ if __name__ == "__main__":
 
         global_classifier = RAGActivityClassifier(
             model="gpt-5-mini",
-            fewshot=15,
-            out_fewshot=10,
+            fewshot=10,
+            out_fewshot=5,
         )
         logger.info("✓ RAG classifier initialized successfully")
     except Exception as e:
