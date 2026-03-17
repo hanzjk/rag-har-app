@@ -83,13 +83,13 @@ class RAGActivityClassifier:
     """
 
     # Default collection name (shared data store)
-    DEFAULT_COLLECTION_NAME = "har_demo_collection"
+    DEFAULT_COLLECTION_NAME = "har_user_default"
     # Prefix for user data stores
     USER_DATASTORE_PREFIX = "har_user_"
 
     def __init__(
         self,
-        model: str = "gpt-5-mini",
+        model: str = "gpt-5.2",
         fewshot: int = 30,
         out_fewshot: int = 5,
     ):
@@ -636,7 +636,9 @@ class RAGActivityClassifier:
 
         # Construct prompt for LLM
         retrieved_data = "\n\n".join(sections)
-        classes_str = str(self.valid_labels)
+        # Only allow LLM to pick from labels that appear in retrieved samples
+        retrieved_unique_labels = list(set(retrieved_labels))
+        classes_str = str(retrieved_unique_labels)
 
         series = (
             f"[Whole Segment]:\n{whole_stats}\n"
@@ -654,17 +656,16 @@ class RAGActivityClassifier:
 
         if fast_inference:
             # FAST INFERENCE: Use gpt-5-mini without structured output for speed
-            fast_model = "gpt-5-mini"
             system_prompt = (
                 f"Use semantic similarity to compare the candidate statistics with the retrieved samples and output the activity label that maximizes similarity; respond with only the class label from {classes_str}"
             )
 
-            logger.info(f"FAST INFERENCE: Using {fast_model} without structured output")
+            logger.info(f"FAST INFERENCE: Using {self.model} without structured output")
 
             while not success:
                 try:
                     response = self.openai_client.chat.completions.create(
-                        model=fast_model,
+                        model=self.model,
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt},
@@ -1035,7 +1036,7 @@ def main():
     # Initialize classifier
     print("Initializing RAG classifier...")
     classifier = RAGActivityClassifier(
-        model="gpt-5-mini",
+        model="gpt-5.2",
         fewshot=10,
         out_fewshot=5,
     )

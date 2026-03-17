@@ -411,9 +411,12 @@ async def main():
     # Show accessible URLs
     import socket
 
-    hostname = socket.gethostname()
-    local_ip = socket.gethostbyname(hostname)
-    logger.info(f"📱 Connect from mobile app using: ws://{local_ip}:{port}/ws")
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+        logger.info(f"📱 Connect from mobile app using: ws://{local_ip}:{port}/ws")
+    except socket.gaierror:
+        logger.info(f"📱 Connect from mobile app using: ws://<your-local-ip>:{port}/ws")
 
     logger.info("=" * 60)
     logger.info("Waiting for connections...")
@@ -444,7 +447,7 @@ if __name__ == "__main__":
         from classifier import RAGActivityClassifier
 
         global_classifier = RAGActivityClassifier(
-            model="gpt-5-mini",
+            model="gpt-5.2",
             fewshot=10,
             out_fewshot=5,
         )
