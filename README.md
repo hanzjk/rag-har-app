@@ -240,4 +240,4 @@ ws://YOUR_LOCAL_IP:8000/ws
 
 ## Development
 
-For server-specific documentation, see [server/README.md](server/README.md).
+For server-specific documentation, see [server/README.md](server/README.md)
